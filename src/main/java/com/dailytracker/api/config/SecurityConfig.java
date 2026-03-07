@@ -27,20 +27,22 @@ public class SecurityConfig {
         http
             .cors(cors -> cors.configurationSource(corsSource))
             .csrf(csrf -> csrf.disable())
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .sessionManagement(sm -> sm
+                .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+            )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/auth/register",
                     "/auth/login",
                     "/auth/google",
                     "/auth/google/callback",
+                    "/oauth2/**",
                     "/healthz"
                 ).permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )
             .oauth2Login(oauth2 -> oauth2
-                .authorizationEndpoint(ae -> ae.baseUri("/auth/google"))
                 .redirectionEndpoint(re -> re.baseUri("/auth/google/callback"))
                 .successHandler(oAuth2SuccessHandler)
             )
