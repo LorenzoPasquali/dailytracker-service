@@ -14,7 +14,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,18 +29,48 @@ public class GeminiService {
 
     private static final int MAX_TOOL_CALLS = 3;
     private static final String MODEL_ID = "gemini-2.5-flash";
+    private static final ZoneId ZONE_BR = ZoneId.of("America/Sao_Paulo");
 
-    private static final String SYSTEM_PROMPT = """
-            Você é um assistente especializado em metodologias ágeis e Scrum para o DailyTracker.
-            Seu papel é analisar as tarefas, projetos e tipos de tarefa do usuário e fornecer
-            insights sobre produtividade, gargalos no fluxo Kanban (PLANNED/DOING/DONE),
-            distribuição de trabalho e sugestões de melhoria de processo.
+    private static final String SYSTEM_PROMPT_TEMPLATE = """
+            Você é o assistente de IA do DailyTracker, um sistema de gerenciamento de tarefas e projetos
+            com quadro Kanban. O sistema organiza tarefas em três colunas:
+            - Planejado (PLANNED) — tarefas planejadas, ainda não iniciadas
+            - Em Progresso (DOING) — tarefas sendo trabalhadas atualmente
+            - Feito (DONE) — tarefas concluídas
+
+            Cada tarefa pode pertencer a um projeto e ter um tipo de tarefa associado.
+
+            Data e hora atual: %s (%s).
+
+            Seu papel é ajudar o usuário a:
+            - Preparar resumos para daily scrums — quando pedido, gere um resumo curto e direto
+              do que foi feito, o que está em progresso e o que está planejado para o período solicitado.
+              Use bullet points curtos sem texto desnecessário.
+            - Entender o estado atual das suas tarefas e projetos
+            - Identificar gargalos e tarefas paradas há muito tempo
+            - Analisar produtividade e distribuição de trabalho entre projetos
+            - Sugerir melhorias no fluxo de trabalho
 
             Você tem acesso a ferramentas para consultar as tarefas, projetos e tipos de tarefa
-            do usuário. Use-as quando necessário para responder perguntas sobre os dados do usuário.
+            do usuário. A ferramenta get_tasks aceita filtros opcionais de data e status — use-os
+            para buscar apenas os dados relevantes à pergunta do usuário.
 
-            Responda sempre em português do Brasil. Seja conciso e orientado a dados.
-            Use formatação markdown quando apropriado para melhorar a legibilidade.
+            Quando o usuário pedir resumo de um dia específico (ex: "sexta-feira", "ontem", "dia 5"),
+            calcule a data correta com base na data atual e use os filtros de data da ferramenta.
+
+            Vocabulário do usuário e mapeamento de status:
+            - "pendentes", "pendente" = tarefas com status Planejado (PLANNED), ou seja, ainda não iniciadas
+            - "em andamento", "em progresso", "fazendo" = tarefas com status Em Progresso (DOING)
+            - "concluídas", "feitas", "finalizadas", "prontas" = tarefas com status Feito (DONE)
+            Sempre respeite esse mapeamento ao filtrar por status. Se o usuário pedir "tarefas pendentes",
+            busque apenas PLANNED. Se pedir "tarefas não concluídas", busque PLANNED e DOING separadamente.
+
+            Regras:
+            - Nunca mencione IDs internos. Use sempre nomes e títulos.
+            - Responda sempre em português do Brasil.
+            - Seja conciso e orientado a dados. Resumos de daily devem ser curtos.
+            - Use formatação markdown quando apropriado.
+            - Ao exibir status, use os nomes traduzidos: Planejado, Em Progresso, Feito.
             """;
 
     private final TaskRepository taskRepository;
@@ -114,9 +150,14 @@ public class GeminiService {
     }
 
     private GenerateContentConfig buildConfig() {
+        LocalDate today = LocalDate.now(ZONE_BR);
+        String dateStr = today.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+        String dayOfWeek = today.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.of("pt", "BR"));
+        String systemPrompt = String.format(SYSTEM_PROMPT_TEMPLATE, dateStr, dayOfWeek);
+
         return GenerateContentConfig.builder()
                 .systemInstruction(Content.builder()
-                        .parts(List.of(Part.builder().text(SYSTEM_PROMPT).build()))
+                        .parts(List.of(Part.builder().text(systemPrompt).build()))
                         .build())
                 .tools(List.of(buildTools()))
                 .automaticFunctionCalling(
@@ -129,10 +170,34 @@ public class GeminiService {
     private Tool buildTools() {
         FunctionDeclaration getTasks = FunctionDeclaration.builder()
                 .name("get_tasks")
-                .description("Retorna todas as tarefas do usuário com título, descrição, status (PLANNED/DOING/DONE), datas de criação/atualização, projeto e tipo de tarefa.")
+                .description("Retorna as tarefas do usuário. Pode filtrar por data e/ou status. " +
+                        "Para resumos de daily, use os filtros de data para buscar tarefas de dias específicos.")
                 .parameters(Schema.builder()
                         .type("OBJECT")
-                        .properties(Map.of())
+                        .properties(Map.of(
+                                "date", Schema.builder()
+                                        .type("STRING")
+                                        .description("Filtrar tarefas de uma data específica no formato YYYY-MM-DD. " +
+                                                "Retorna tarefas criadas ou atualizadas nesse dia.")
+                                        .build(),
+                                "startDate", Schema.builder()
+                                        .type("STRING")
+                                        .description("Data inicial do período no formato YYYY-MM-DD. Usar junto com endDate.")
+                                        .build(),
+                                "endDate", Schema.builder()
+                                        .type("STRING")
+                                        .description("Data final do período no formato YYYY-MM-DD. Usar junto com startDate.")
+                                        .build(),
+                                "status", Schema.builder()
+                                        .type("STRING")
+                                        .description("Filtrar por status: PLANNED, DOING ou DONE.")
+                                        .enum_(List.of("PLANNED", "DOING", "DONE"))
+                                        .build(),
+                                "project", Schema.builder()
+                                        .type("STRING")
+                                        .description("Filtrar por nome do projeto.")
+                                        .build()
+                        ))
                         .build())
                 .build();
 
@@ -159,29 +224,77 @@ public class GeminiService {
                 .build();
     }
 
+    private String translateStatus(String status) {
+        if (status == null) return "Desconhecido";
+        return switch (status) {
+            case "PLANNED" -> "Planejado";
+            case "DOING" -> "Em Progresso";
+            case "DONE" -> "Feito";
+            default -> status;
+        };
+    }
+
     private Map<String, Object> executeTool(String functionName, Map<String, Object> args, Integer userId) {
         return switch (functionName) {
             case "get_tasks" -> {
                 List<Task> tasks = taskRepository.findByUserIdOrderByCreatedAtDesc(userId);
+                Map<Integer, String> projectNames = projectRepository.findByUserIdOrderByNameAsc(userId)
+                        .stream().collect(Collectors.toMap(Project::getId, Project::getName));
+                Map<Integer, String> taskTypeNames = taskTypeRepository.findByProject_UserIdOrderByNameAsc(userId)
+                        .stream().collect(Collectors.toMap(TaskType::getId, TaskType::getName));
+
+                // Apply date filter
+                String date = args.get("date") != null ? args.get("date").toString() : null;
+                String startDate = args.get("startDate") != null ? args.get("startDate").toString() : null;
+                String endDate = args.get("endDate") != null ? args.get("endDate").toString() : null;
+                String statusFilter = args.get("status") != null ? args.get("status").toString() : null;
+                String projectFilter = args.get("project") != null ? args.get("project").toString() : null;
+
+                if (date != null) {
+                    LocalDate ld = LocalDate.parse(date);
+                    Instant dayStart = ld.atStartOfDay(ZONE_BR).toInstant();
+                    Instant dayEnd = ld.plusDays(1).atStartOfDay(ZONE_BR).toInstant();
+                    tasks = tasks.stream().filter(t ->
+                            (t.getCreatedAt().compareTo(dayStart) >= 0 && t.getCreatedAt().isBefore(dayEnd)) ||
+                            (t.getUpdatedAt().compareTo(dayStart) >= 0 && t.getUpdatedAt().isBefore(dayEnd))
+                    ).toList();
+                } else if (startDate != null && endDate != null) {
+                    Instant rangeStart = LocalDate.parse(startDate).atStartOfDay(ZONE_BR).toInstant();
+                    Instant rangeEnd = LocalDate.parse(endDate).plusDays(1).atStartOfDay(ZONE_BR).toInstant();
+                    tasks = tasks.stream().filter(t ->
+                            (t.getCreatedAt().compareTo(rangeStart) >= 0 && t.getCreatedAt().isBefore(rangeEnd)) ||
+                            (t.getUpdatedAt().compareTo(rangeStart) >= 0 && t.getUpdatedAt().isBefore(rangeEnd))
+                    ).toList();
+                }
+
+                if (statusFilter != null) {
+                    tasks = tasks.stream().filter(t -> statusFilter.equals(t.getStatus())).toList();
+                }
+
+                if (projectFilter != null) {
+                    tasks = tasks.stream().filter(t -> {
+                        String pName = t.getProjectId() != null ? projectNames.get(t.getProjectId()) : null;
+                        return pName != null && pName.toLowerCase().contains(projectFilter.toLowerCase());
+                    }).toList();
+                }
+
                 List<Map<String, Object>> taskList = tasks.stream().map(t -> {
                     Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", t.getId());
                     m.put("title", t.getTitle());
                     m.put("description", t.getDescription() != null ? t.getDescription() : "");
-                    m.put("status", t.getStatus());
+                    m.put("status", translateStatus(t.getStatus()));
                     m.put("createdAt", t.getCreatedAt().toString());
                     m.put("updatedAt", t.getUpdatedAt().toString());
-                    m.put("projectId", t.getProjectId());
-                    m.put("taskTypeId", t.getTaskTypeId());
+                    m.put("project", t.getProjectId() != null ? projectNames.getOrDefault(t.getProjectId(), "Sem projeto") : "Sem projeto");
+                    m.put("taskType", t.getTaskTypeId() != null ? taskTypeNames.getOrDefault(t.getTaskTypeId(), "Sem tipo") : "Sem tipo");
                     return m;
                 }).toList();
-                yield Map.of("tasks", taskList);
+                yield Map.of("tasks", taskList, "count", taskList.size());
             }
             case "get_projects" -> {
                 List<Project> projects = projectRepository.findByUserIdOrderByNameAsc(userId);
                 List<Map<String, Object>> projectList = projects.stream().map(p -> {
                     Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", p.getId());
                     m.put("name", p.getName());
                     m.put("color", p.getColor());
                     return m;
@@ -190,11 +303,13 @@ public class GeminiService {
             }
             case "get_task_types" -> {
                 List<TaskType> taskTypes = taskTypeRepository.findByProject_UserIdOrderByNameAsc(userId);
+                Map<Integer, String> projectNames = projectRepository.findByUserIdOrderByNameAsc(userId)
+                        .stream().collect(Collectors.toMap(Project::getId, Project::getName));
+
                 List<Map<String, Object>> typeList = taskTypes.stream().map(tt -> {
                     Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", tt.getId());
                     m.put("name", tt.getName());
-                    m.put("projectId", tt.getProjectId());
+                    m.put("project", projectNames.getOrDefault(tt.getProjectId(), "Sem projeto"));
                     return m;
                 }).toList();
                 yield Map.of("taskTypes", typeList);
