@@ -1,0 +1,2 @@
+ALTER TABLE public."User"
+    ADD COLUMN IF NOT EXISTS "geminiKey" VARCHAR(512);

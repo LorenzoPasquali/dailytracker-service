@@ -27,6 +27,9 @@ public class User {
     @Column(name = "\"googleId\"", unique = true)
     private String googleId;
 
+    @Column(name = "\"geminiKey\"")
+    private String geminiKey;
+
     @OneToMany(mappedBy = "user")
     private List<Task> tasks;
 

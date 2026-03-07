@@ -42,8 +42,14 @@ spring:
             token-uri: https://oauth2.googleapis.com/token
             user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
 
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+
 app:
   jwt:
     secret: ${JWT_SECRET}
     expiration: 86400000
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  aes-secret: ${AES_SECRET}

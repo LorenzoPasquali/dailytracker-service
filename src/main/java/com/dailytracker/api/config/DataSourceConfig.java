@@ -12,7 +12,7 @@ import java.net.URI;
 public class DataSourceConfig {
 
     @Bean
-    public DataSource dataSource(@Value("${DATABASE_URL}") String url) {
+    public DataSource dataSource(@Value("${spring.datasource.url}") String url) {
         // If already JDBC format, use as-is
         if (url.startsWith("jdbc:")) {
             return DataSourceBuilder.create().url(url).build();
