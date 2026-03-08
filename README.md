@@ -1,5 +1,7 @@
 # dailytracker-service
 
+https://dailytracker.com.br
+
 Backend da aplicação Daily Tracker, escrito em Java com Spring Boot. Fornece a API REST consumida pelo frontend em React.
 
 ## Stack
