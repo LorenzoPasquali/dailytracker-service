@@ -2,6 +2,8 @@ package com.dailytracker.api.controller;
 
 import com.dailytracker.api.dto.request.LoginRequest;
 import com.dailytracker.api.dto.request.RegisterRequest;
+import com.dailytracker.api.dto.request.TokenRefreshRequest;
+import com.dailytracker.api.dto.response.AuthResponse;
 import com.dailytracker.api.service.AuthService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -32,8 +34,12 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<Map<String, String>> login(@Valid @RequestBody LoginRequest request) {
-        String token = authService.login(request);
-        return ResponseEntity.ok(Map.of("token", token));
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        return ResponseEntity.ok(authService.login(request));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody TokenRefreshRequest request) {
+        return ResponseEntity.ok(authService.refreshToken(request.refreshToken()));
     }
 }

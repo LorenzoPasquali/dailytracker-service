@@ -1,7 +1,9 @@
 package com.dailytracker.api.security;
 
+import com.dailytracker.api.entity.RefreshToken;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.repository.UserRepository;
+import com.dailytracker.api.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
     private final UserRepository userRepository;
     private final JwtService jwtService;
+    private final AuthService authService;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
@@ -42,16 +45,17 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
                 ));
 
         String token = jwtService.generateToken(user.getId());
+        RefreshToken refreshToken = authService.createRefreshToken(user);
 
         // Replicate the Node.js popup flow: postMessage to opener, fallback to redirect
         response.setContentType("text/html");
         PrintWriter writer = response.getWriter();
         writer.write("<!DOCTYPE html><html><body><script>"
                 + "if (window.opener) {"
-                + "  window.opener.postMessage({ token: '" + token + "' }, '" + frontendUrl + "');"
+                + "  window.opener.postMessage({ token: '" + token + "', refreshToken: '" + refreshToken.getToken() + "' }, '" + frontendUrl + "');"
                 + "  window.close();"
                 + "} else {"
-                + "  window.location.href = '" + frontendUrl + "/login/success?token=" + token + "';"
+                + "  window.location.href = '" + frontendUrl + "/login/success?token=" + token + "&refreshToken=" + refreshToken.getToken() + "';"
                 + "}"
                 + "</script></body></html>");
         writer.flush();

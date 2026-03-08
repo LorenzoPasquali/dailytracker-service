@@ -1,0 +1,6 @@
+CREATE TABLE "RefreshToken" (
+    id SERIAL PRIMARY KEY,
+    token TEXT NOT NULL UNIQUE,
+    "userId" INTEGER NOT NULL REFERENCES "User"(id) ON DELETE CASCADE,
+    "expiryDate" TIMESTAMPTZ NOT NULL
+);
