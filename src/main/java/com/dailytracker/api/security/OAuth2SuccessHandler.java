@@ -12,6 +12,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -28,6 +29,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     private String frontendUrl;
 
     @Override
+    @Transactional
     public void onAuthenticationSuccess(HttpServletRequest request,
                                         HttpServletResponse response,
                                         Authentication authentication) throws IOException {
@@ -37,12 +39,20 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         String email = oAuth2User.getAttribute("email");
 
         User user = userRepository.findByGoogleId(googleId)
-                .orElseGet(() -> userRepository.save(
-                        User.builder()
-                                .googleId(googleId)
-                                .email(email)
-                                .build()
-                ));
+                .orElseGet(() -> {
+                    // Se nao encontrar pelo Google ID, tenta encontrar pelo Email (para vincular contas)
+                    return userRepository.findByEmail(email)
+                            .map(existingUser -> {
+                                existingUser.setGoogleId(googleId);
+                                return userRepository.save(existingUser);
+                            })
+                            .orElseGet(() -> userRepository.save(
+                                    User.builder()
+                                            .googleId(googleId)
+                                            .email(email)
+                                            .build()
+                            ));
+                });
 
         String token = jwtService.generateToken(user.getId());
         RefreshToken refreshToken = authService.createRefreshToken(user);

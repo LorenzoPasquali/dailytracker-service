@@ -63,21 +63,21 @@ public class AuthService {
 
     @Transactional
     public AuthResponse refreshToken(String requestRefreshToken) {
-        return refreshTokenRepository.findByToken(requestRefreshToken)
+        RefreshToken rt = refreshTokenRepository.findByToken(requestRefreshToken)
                 .map(this::verifyExpiration)
-                .map(RefreshToken::getUser)
-                .map(user -> {
-                    String token = jwtService.generateToken(user.getId());
-                    // Update current refresh token expiry
-                    refreshTokenRepository.findByToken(requestRefreshToken).ifPresent(rt -> {
-                        rt.setExpiryDate(Instant.now().plusMillis(refreshExpiration));
-                        refreshTokenRepository.save(rt);
-                    });
-                    return new AuthResponse(token, requestRefreshToken);
-                })
                 .orElseThrow(() -> new BadRequestException("Token de atualização inválido."));
+
+        User user = rt.getUser();
+        String token = jwtService.generateToken(user.getId());
+
+        // Update current refresh token expiry
+        rt.setExpiryDate(Instant.now().plusMillis(refreshExpiration));
+        refreshTokenRepository.save(rt);
+
+        return new AuthResponse(token, requestRefreshToken);
     }
 
+    @Transactional
     public RefreshToken createRefreshToken(User user) {
         refreshTokenRepository.deleteByUser(user); // Single session for simplicity, or remove this for multiple sessions
 
