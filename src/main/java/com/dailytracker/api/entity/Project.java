@@ -31,10 +31,10 @@ public class Project {
     @JoinColumn(name = "\"userId\"", nullable = false)
     private User user;
 
-    @OneToMany(mappedBy = "project")
+    @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Task> tasks;
 
-    @OneToMany(mappedBy = "project")
+    @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("name ASC")
     private List<TaskType> taskTypes;
 

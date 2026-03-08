@@ -30,4 +30,11 @@ public class TaskType {
 
     @OneToMany(mappedBy = "taskType")
     private List<Task> tasks;
+
+    @PreRemove
+    private void preRemove() {
+        if (tasks != null) {
+            tasks.forEach(task -> task.setTaskType(null));
+        }
+    }
 }
