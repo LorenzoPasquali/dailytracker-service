@@ -7,6 +7,7 @@ import com.dailytracker.api.entity.Task;
 import com.dailytracker.api.entity.TaskType;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.exception.ResourceNotFoundException;
+import com.dailytracker.api.i18n.MessageService;
 import com.dailytracker.api.repository.ProjectRepository;
 import com.dailytracker.api.repository.TaskRepository;
 import com.dailytracker.api.repository.TaskTypeRepository;
@@ -27,6 +28,7 @@ public class TaskService {
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final TaskTypeRepository taskTypeRepository;
+    private final MessageService messageService;
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> findAllByUser(Integer userId) {
@@ -39,7 +41,7 @@ public class TaskService {
     @Transactional
     public Map<String, Object> create(TaskRequest request, Integer userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
 
         Task task = Task.builder()
                 .title(request.title())
@@ -67,7 +69,7 @@ public class TaskService {
     @Transactional
     public Map<String, Object> update(Integer id, TaskUpdateRequest request, Integer userId) {
         Task task = taskRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Task não encontrada."));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.task.not_found")));
 
         if (request.title() != null && !request.title().isBlank()) {
             task.setTitle(request.title());
@@ -95,7 +97,7 @@ public class TaskService {
 
     public void delete(Integer id, Integer userId) {
         Task task = taskRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Task não encontrada."));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.task.not_found")));
         taskRepository.delete(task);
     }
 

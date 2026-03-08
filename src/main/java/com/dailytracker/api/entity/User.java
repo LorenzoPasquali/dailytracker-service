@@ -30,6 +30,10 @@ public class User {
     @Column(name = "\"geminiKey\"")
     private String geminiKey;
 
+    @Column(name = "\"language\"", nullable = false)
+    @Builder.Default
+    private String language = "pt-BR";
+
     @OneToMany(mappedBy = "user")
     private List<Task> tasks;
 

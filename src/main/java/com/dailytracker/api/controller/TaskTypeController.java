@@ -20,8 +20,8 @@ public class TaskTypeController {
     @PostMapping
     public ResponseEntity<Map<String, Object>> create(@Valid @RequestBody TaskTypeRequest request,
                                                        Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        Map<String, Object> taskType = taskTypeService.create(request, userId);
+        Number userId = (Number) auth.getPrincipal();
+        Map<String, Object> taskType = taskTypeService.create(request, userId.intValue());
         return ResponseEntity.status(201).body(taskType);
     }
 
@@ -29,14 +29,14 @@ public class TaskTypeController {
     public Map<String, Object> update(@PathVariable Integer id,
                                       @Valid @RequestBody TaskTypeRequest request,
                                       Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        return taskTypeService.update(id, request, userId);
+        Number userId = (Number) auth.getPrincipal();
+        return taskTypeService.update(id, request, userId.intValue());
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id, Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        taskTypeService.delete(id, userId);
+        Number userId = (Number) auth.getPrincipal();
+        taskTypeService.delete(id, userId.intValue());
         return ResponseEntity.noContent().build();
     }
 }

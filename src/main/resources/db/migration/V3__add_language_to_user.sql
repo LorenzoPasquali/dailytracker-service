@@ -1,0 +1,2 @@
+ALTER TABLE public."User"
+    ADD COLUMN IF NOT EXISTS "language" VARCHAR(10) NOT NULL DEFAULT 'pt-BR';

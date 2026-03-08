@@ -43,7 +43,12 @@ public class JwtService {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-        return claims.get("userId", Integer.class);
+        
+        Object userId = claims.get("userId");
+        if (userId instanceof Number number) {
+            return number.intValue();
+        }
+        return Integer.parseInt(claims.getSubject());
     }
 
     public boolean isTokenValid(String token) {

@@ -20,15 +20,15 @@ public class ProjectController {
 
     @GetMapping
     public List<Map<String, Object>> getAll(Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        return projectService.findAllByUser(userId);
+        Number userId = (Number) auth.getPrincipal();
+        return projectService.findAllByUser(userId.intValue());
     }
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> create(@Valid @RequestBody ProjectRequest request,
                                                        Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        Map<String, Object> project = projectService.create(request, userId);
+        Number userId = (Number) auth.getPrincipal();
+        Map<String, Object> project = projectService.create(request, userId.intValue());
         return ResponseEntity.status(201).body(project);
     }
 
@@ -36,14 +36,14 @@ public class ProjectController {
     public Map<String, Object> update(@PathVariable Integer id,
                                       @Valid @RequestBody ProjectRequest request,
                                       Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        return projectService.update(id, request, userId);
+        Number userId = (Number) auth.getPrincipal();
+        return projectService.update(id, request, userId.intValue());
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id, Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        projectService.delete(id, userId);
+        Number userId = (Number) auth.getPrincipal();
+        projectService.delete(id, userId.intValue());
         return ResponseEntity.noContent().build();
     }
 }

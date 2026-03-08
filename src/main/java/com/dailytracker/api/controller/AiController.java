@@ -4,6 +4,7 @@ import com.dailytracker.api.dto.request.ChatRequest;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.exception.BadRequestException;
 import com.dailytracker.api.exception.ResourceNotFoundException;
+import com.dailytracker.api.i18n.MessageService;
 import com.dailytracker.api.repository.UserRepository;
 import com.dailytracker.api.service.EncryptionService;
 import com.dailytracker.api.service.GeminiService;
@@ -23,23 +24,24 @@ public class AiController {
     private final UserRepository userRepository;
     private final EncryptionService encryptionService;
     private final GeminiService geminiService;
+    private final MessageService messageService;
 
     @GetMapping("/key-status")
     public Map<String, Object> keyStatus(Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
+        Number userId = (Number) auth.getPrincipal();
+        User user = userRepository.findById(userId.intValue())
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
         return Map.of("hasKey", user.getGeminiKey() != null && !user.getGeminiKey().isBlank());
     }
 
     @PutMapping("/key")
     public ResponseEntity<Void> saveKey(@RequestBody Map<String, String> body, Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
+        Number userId = (Number) auth.getPrincipal();
+        User user = userRepository.findById(userId.intValue())
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
         String key = body.get("key");
         if (key == null || key.isBlank()) {
-            throw new BadRequestException("A chave da API não pode ser vazia.");
+            throw new BadRequestException(messageService.get("error.gemini.key.empty"));
         }
         user.setGeminiKey(encryptionService.encrypt(key));
         userRepository.save(user);
@@ -48,9 +50,9 @@ public class AiController {
 
     @DeleteMapping("/key")
     public ResponseEntity<Void> deleteKey(Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
+        Number userId = (Number) auth.getPrincipal();
+        User user = userRepository.findById(userId.intValue())
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
         user.setGeminiKey(null);
         userRepository.save(user);
         return ResponseEntity.noContent().build();
@@ -58,19 +60,19 @@ public class AiController {
 
     @PostMapping("/chat")
     public Map<String, Object> chat(@Valid @RequestBody ChatRequest request, Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
+        Number userId = (Number) auth.getPrincipal();
+        User user = userRepository.findById(userId.intValue())
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
         if (user.getGeminiKey() == null || user.getGeminiKey().isBlank()) {
-            throw new BadRequestException("Chave Gemini não configurada. Configure sua API Key para usar o assistente.");
+            throw new BadRequestException(messageService.get("error.gemini.key.missing"));
         }
         String decryptedKey;
         try {
             decryptedKey = encryptionService.decrypt(user.getGeminiKey());
         } catch (RuntimeException e) {
-            throw new BadRequestException("Erro ao recuperar sua chave. Reconfigure sua API Key.");
+            throw new BadRequestException(messageService.get("error.gemini.key.decrypt"));
         }
-        String reply = geminiService.chat(decryptedKey, request.history(), userId);
+        String reply = geminiService.chat(decryptedKey, request.history(), userId.intValue(), user.getLanguage());
         return Map.of("reply", reply);
     }
 }

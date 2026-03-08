@@ -21,15 +21,15 @@ public class TaskController {
 
     @GetMapping
     public List<Map<String, Object>> getAll(Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        return taskService.findAllByUser(userId);
+        Number userId = (Number) auth.getPrincipal();
+        return taskService.findAllByUser(userId.intValue());
     }
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> create(@Valid @RequestBody TaskRequest request,
                                                        Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        Map<String, Object> task = taskService.create(request, userId);
+        Number userId = (Number) auth.getPrincipal();
+        Map<String, Object> task = taskService.create(request, userId.intValue());
         return ResponseEntity.status(201).body(task);
     }
 
@@ -37,14 +37,14 @@ public class TaskController {
     public Map<String, Object> update(@PathVariable Integer id,
                                       @Valid @RequestBody TaskUpdateRequest request,
                                       Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        return taskService.update(id, request, userId);
+        Number userId = (Number) auth.getPrincipal();
+        return taskService.update(id, request, userId.intValue());
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id, Authentication auth) {
-        Integer userId = (Integer) auth.getPrincipal();
-        taskService.delete(id, userId);
+        Number userId = (Number) auth.getPrincipal();
+        taskService.delete(id, userId.intValue());
         return ResponseEntity.noContent().build();
     }
 }

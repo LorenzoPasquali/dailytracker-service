@@ -5,6 +5,7 @@ import com.dailytracker.api.entity.Project;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.exception.BadRequestException;
 import com.dailytracker.api.exception.ResourceNotFoundException;
+import com.dailytracker.api.i18n.MessageService;
 import com.dailytracker.api.repository.ProjectRepository;
 import com.dailytracker.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+    private final MessageService messageService;
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> findAllByUser(Integer userId) {
@@ -34,7 +36,7 @@ public class ProjectService {
     @Transactional
     public Map<String, Object> create(ProjectRequest request, Integer userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
 
         Project project = Project.builder()
                 .name(request.name())
@@ -49,7 +51,7 @@ public class ProjectService {
     @Transactional
     public Map<String, Object> update(Integer id, ProjectRequest request, Integer userId) {
         Project project = projectRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.project.not_found")));
 
         if (request.name() != null) {
             project.setName(request.name());
@@ -64,12 +66,12 @@ public class ProjectService {
 
     public void delete(Integer id, Integer userId) {
         Project project = projectRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Projeto não encontrado."));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.project.not_found")));
 
         try {
             projectRepository.delete(project);
         } catch (DataIntegrityViolationException e) {
-            throw new BadRequestException("Não é possível excluir o projeto pois ele possui tarefas vinculadas.");
+            throw new BadRequestException(messageService.get("error.project.has_tasks"));
         }
     }
 

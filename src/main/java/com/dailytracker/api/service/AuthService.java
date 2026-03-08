@@ -7,6 +7,7 @@ import com.dailytracker.api.entity.RefreshToken;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.exception.BadRequestException;
 import com.dailytracker.api.exception.ResourceNotFoundException;
+import com.dailytracker.api.i18n.MessageService;
 import com.dailytracker.api.repository.RefreshTokenRepository;
 import com.dailytracker.api.repository.UserRepository;
 import com.dailytracker.api.security.JwtService;
@@ -27,18 +28,20 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final MessageService messageService;
 
     @Value("${app.jwt.refresh-expiration}")
     private long refreshExpiration;
 
     public Integer register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
-            throw new BadRequestException("Email já existe.");
+            throw new BadRequestException(messageService.get("error.email.exists"));
         }
 
         User user = User.builder()
                 .email(request.email())
                 .password(passwordEncoder.encode(request.password()))
+                .language(request.language() != null ? request.language() : "pt-BR")
                 .build();
 
         user = userRepository.save(user);
@@ -52,7 +55,7 @@ public class AuthService {
 
         if (user.getPassword() == null
                 || !passwordEncoder.matches(request.password(), user.getPassword())) {
-            throw new BadRequestException("Credenciais inválidas.");
+            throw new BadRequestException(messageService.get("error.credentials.invalid"));
         }
 
         String token = jwtService.generateToken(user.getId());
@@ -65,7 +68,7 @@ public class AuthService {
     public AuthResponse refreshToken(String requestRefreshToken) {
         RefreshToken rt = refreshTokenRepository.findByToken(requestRefreshToken)
                 .map(this::verifyExpiration)
-                .orElseThrow(() -> new BadRequestException("Token de atualização inválido."));
+                .orElseThrow(() -> new BadRequestException(messageService.get("error.token.refresh.invalid")));
 
         User user = rt.getUser();
         String token = jwtService.generateToken(user.getId());
@@ -93,7 +96,7 @@ public class AuthService {
     public RefreshToken verifyExpiration(RefreshToken token) {
         if (token.getExpiryDate().isBefore(Instant.now())) {
             refreshTokenRepository.delete(token);
-            throw new BadRequestException("Token de atualização expirado. Faça login novamente.");
+            throw new BadRequestException(messageService.get("error.token.refresh.expired"));
         }
         return token;
     }
