@@ -41,6 +41,13 @@ public class TaskController {
         return taskService.update(id, request, userId.intValue());
     }
 
+    @PutMapping("/reorder")
+    public ResponseEntity<Void> reorder(@RequestBody List<Map<String, Object>> items, Authentication auth) {
+        Number userId = (Number) auth.getPrincipal();
+        taskService.reorder(items, userId.intValue());
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id, Authentication auth) {
         Number userId = (Number) auth.getPrincipal();

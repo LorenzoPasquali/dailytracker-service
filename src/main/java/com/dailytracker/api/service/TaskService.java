@@ -32,7 +32,7 @@ public class TaskService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> findAllByUser(Integer userId) {
-        return taskRepository.findByUserIdOrderByCreatedAtDesc(userId)
+        return taskRepository.findByUserIdOrdered(userId)
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -43,10 +43,15 @@ public class TaskService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
 
+        String priority = request.priority() != null ? request.priority() : "MEDIUM";
+        Integer position = resolvePositionForNewTask(userId, request.status(), priority);
+
         Task task = Task.builder()
                 .title(request.title())
                 .description(request.description())
                 .status(request.status())
+                .priority(priority)
+                .position(position)
                 .user(user)
                 .build();
 
@@ -77,8 +82,13 @@ public class TaskService {
         if (request.description() != null) {
             task.setDescription(request.description());
         }
-        if (request.status() != null) {
+        if (request.status() != null && !request.status().equals(task.getStatus())) {
             task.setStatus(request.status());
+            task.setPosition(null);
+        }
+        if (request.priority() != null && !request.priority().equals(task.getPriority())) {
+            task.setPriority(request.priority());
+            task.setPosition(null);
         }
         if (request.projectId() != null) {
             Project project = projectRepository.findByIdAndUserId(request.projectId(), userId)
@@ -95,6 +105,31 @@ public class TaskService {
         return toResponse(task);
     }
 
+    @Transactional
+    public void reorder(List<Map<String, Object>> items, Integer userId) {
+        for (Map<String, Object> item : items) {
+            Integer id = (Integer) item.get("id");
+            Integer position = (Integer) item.get("position");
+            taskRepository.findByIdAndUserId(id, userId)
+                    .ifPresent(task -> {
+                        task.setPosition(position);
+                        taskRepository.save(task);
+                    });
+        }
+    }
+
+    private Integer resolvePositionForNewTask(Integer userId, String status, String priority) {
+        if ("HIGH".equals(priority)) {
+            return taskRepository.findMinPositionByUserIdAndStatus(userId, status)
+                    .map(min -> min - 10)
+                    .orElse(null);
+        } else {
+            return taskRepository.findMaxPositionByUserIdAndStatus(userId, status)
+                    .map(max -> max + 10)
+                    .orElse(null);
+        }
+    }
+
     public void delete(Integer id, Integer userId) {
         Task task = taskRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.task.not_found")));
@@ -107,6 +142,7 @@ public class TaskService {
         map.put("title", task.getTitle());
         map.put("description", task.getDescription() != null ? task.getDescription() : "");
         map.put("status", task.getStatus());
+        map.put("priority", task.getPriority() != null ? task.getPriority() : "MEDIUM");
         map.put("createdAt", task.getCreatedAt().toString());
         map.put("updatedAt", task.getUpdatedAt().toString());
         map.put("userId", task.getUser().getId());
@@ -121,6 +157,7 @@ public class TaskService {
         map.put("title", task.getTitle());
         map.put("description", task.getDescription() != null ? task.getDescription() : "");
         map.put("status", task.getStatus());
+        map.put("priority", task.getPriority() != null ? task.getPriority() : "MEDIUM");
         map.put("createdAt", task.getCreatedAt().toString());
         map.put("updatedAt", task.getUpdatedAt().toString());
         map.put("userId", userId);

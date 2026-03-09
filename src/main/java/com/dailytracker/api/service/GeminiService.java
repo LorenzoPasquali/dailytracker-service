@@ -4,11 +4,13 @@ import com.dailytracker.api.dto.response.ChatResponse;
 import com.dailytracker.api.entity.Project;
 import com.dailytracker.api.entity.Task;
 import com.dailytracker.api.entity.TaskType;
+import com.dailytracker.api.entity.User;
 import com.dailytracker.api.exception.BadRequestException;
 import com.dailytracker.api.i18n.MessageService;
 import com.dailytracker.api.repository.ProjectRepository;
 import com.dailytracker.api.repository.TaskRepository;
 import com.dailytracker.api.repository.TaskTypeRepository;
+import com.dailytracker.api.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import com.google.genai.types.*;
@@ -68,6 +70,16 @@ public class GeminiService {
                     Sempre respeite esse mapeamento ao filtrar por status. Se o usuário pedir "tarefas pendentes",
                     busque apenas PLANNED. Se pedir "tarefas não concluídas", busque PLANNED e DOING separadamente.
 
+                    Criação de Tarefas:
+                    Quando o usuário pedir para criar tarefas (uma ou várias), siga este fluxo conversacional:
+                    1. Confirme a lista de tarefas que serão criadas.
+                    2. Projeto: Se o usuário já mencionou o projeto na mensagem, reconheça-o e pule esta pergunta. Caso contrário, chame get_projects para listar os projetos disponíveis e apresente as opções numeradas (ex: "1 - DailyTracker, 2 - Outro"). Aceite o número ou "não".
+                    3. Tipo de tarefa: Se o usuário escolheu ou já mencionou um projeto, chame get_task_types passando o nome exato do projeto para filtrar apenas os tipos daquele projeto. Apresente SEMPRE no formato numerado, por exemplo: "1 - Bug, 2 - Feature, 3 - Melhoria". Pergunte: "Deseja associar a um tipo? Digite o número ou 'não'." Aceite o número ou "não".
+                    4. Pergunte qual deve ser o status inicial: 1 - Planejado, 2 - Em Progresso, 3 - Feito. Se não informado, use Planejado.
+                    5. Somente após coletar todas as informações, chame create_task para cada tarefa (todas de uma vez).
+                    6. Confirme quais tarefas foram criadas com sucesso. Se alguma retornar projectNotFound ou typeNotFound, avise o usuário que o vínculo não foi aplicado.
+                    Importante: não crie tarefas sem antes confirmar o fluxo acima com o usuário.
+
                     Regras de Formatação (OBRIGATÓRIO):
                     - NUNCA use asterisco (*) como marcador de lista. Use sempre hífen (-) para listas.
                     - NUNCA use ** para negrito. Use os nomes de status como cabeçalhos simples de texto.
@@ -111,6 +123,16 @@ public class GeminiService {
                     - "in progress", "ongoing", "doing" = tasks with In Progress (DOING) status
                     - "completed", "done", "finished" = tasks with Done (DONE) status
                     Always respect this mapping when filtering by status.
+
+                    Task Creation:
+                    When the user asks to create tasks (one or many), follow this conversational flow:
+                    1. Confirm the list of tasks to be created.
+                    2. Project: If the user already mentioned a project in their message, recognize it and skip this question. Otherwise, call get_projects to list available projects and present them numbered (e.g. "1 - DailyTracker, 2 - Other"). Accept the number or "no".
+                    3. Task type: If the user chose or already mentioned a project, call get_task_types passing the exact project name to filter only that project's types. ALWAYS present them in numbered format, e.g.: "1 - Bug, 2 - Feature, 3 - Improvement". Ask: "Would you like to associate a type? Enter the number or 'no'." Accept the number or "no".
+                    4. Ask for the initial status: 1 - Planned, 2 - In Progress, 3 - Done. If not provided, default to Planned.
+                    5. Only after collecting all information, call create_task for each task (all at once).
+                    6. Confirm which tasks were created successfully. If any returns projectNotFound or typeNotFound, warn the user that the association was not applied.
+                    Important: do not create tasks without first completing the flow above with the user.
 
                     Formatting Rules (MANDATORY):
                     - NEVER use asterisk (*) as a list bullet. Always use hyphen (-) for lists.
@@ -156,6 +178,16 @@ public class GeminiService {
                     - "completadas", "hechas", "finalizadas", "listas" = tareas con estado Hecho (DONE)
                     Siempre respeta este mapeo al filtrar por estado.
 
+                    Creación de Tareas:
+                    Cuando el usuario pida crear tareas (una o varias), sigue este flujo conversacional:
+                    1. Confirma la lista de tareas que se crearán.
+                    2. Proyecto: Si el usuario ya mencionó el proyecto en su mensaje, reconócelo y omite esta pregunta. De lo contrario, llama a get_projects para listar los proyectos disponibles y preséntalos numerados (ej: "1 - DailyTracker, 2 - Otro"). Acepta el número o "no".
+                    3. Tipo de tarea: Si el usuario eligió o ya mencionó un proyecto, llama a get_task_types pasando el nombre exacto del proyecto para filtrar solo los tipos de ese proyecto. Preséntalos SIEMPRE en formato numerado, por ejemplo: "1 - Bug, 2 - Feature, 3 - Mejora". Pregunta: "¿Deseas asociar un tipo? Ingresa el número o 'no'." Acepta el número o "no".
+                    4. Pregunta el estado inicial: 1 - Planificado, 2 - En Progreso, 3 - Hecho. Si no se indica, usa Planificado.
+                    5. Solo después de recopilar toda la información, llama a create_task para cada tarea (todas a la vez).
+                    6. Confirma qué tareas se crearon con éxito. Si alguna devuelve projectNotFound o typeNotFound, avisa al usuario que la asociación no se aplicó.
+                    Importante: no crees tareas sin antes completar el flujo anterior con el usuario.
+
                     Reglas de Formato (OBLIGATORIO):
                     - NUNCA uses asterisco (*) como marcador de lista. Usa siempre guion (-) para listas.
                     - NUNCA uses ** para negrita. Usa los nombres de estado como encabezados simples de texto.
@@ -192,10 +224,11 @@ public class GeminiService {
     private final TaskRepository taskRepository;
     private final ProjectRepository projectRepository;
     private final TaskTypeRepository taskTypeRepository;
+    private final UserRepository userRepository;
     private final MessageService messageService;
     private final ObjectMapper objectMapper;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ChatResponse chat(String apiKey, List<Map<String, String>> historyInput, Integer userId, String language) {
         try {
             Client client = Client.builder().apiKey(apiKey).build();
@@ -208,6 +241,7 @@ public class GeminiService {
                     MODEL_ID, contents, config);
 
             int toolCallCount = 0;
+            boolean tasksCreatedInSession = false;
 
             while (response.functionCalls() != null
                     && !response.functionCalls().isEmpty()
@@ -226,6 +260,9 @@ public class GeminiService {
                     String fnName = fc.name().orElse("");
                     Map<String, Object> fnArgs = fc.args().orElse(Map.of());
                     Map<String, Object> result = executeTool(fnName, fnArgs, userId, language);
+                    if ("create_task".equals(fnName) && Boolean.TRUE.equals(result.get("success"))) {
+                        tasksCreatedInSession = true;
+                    }
                     functionResponseParts.add(Part.builder()
                             .functionResponse(FunctionResponse.builder()
                                     .name(fnName)
@@ -257,13 +294,16 @@ public class GeminiService {
             }
 
             String reply = response.text() != null ? response.text() : messageService.get("error.gemini.no_response");
-            return new ChatResponse(reply, history);
+            return new ChatResponse(reply, history, tasksCreatedInSession);
 
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
             log.error("Error communicating with Gemini", e);
             String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+            if (msg.contains("429") || msg.contains("quota") || msg.contains("rate limit") || msg.contains("resource_exhausted")) {
+                throw new BadRequestException(messageService.get("error.gemini.rate_limit"));
+            }
             if (msg.contains("api key") || msg.contains("unauthorized") || msg.contains("403") || msg.contains("401")) {
                 throw new BadRequestException(messageService.get("error.gemini.key.invalid"));
             }
@@ -386,15 +426,52 @@ public class GeminiService {
 
         FunctionDeclaration getTaskTypes = FunctionDeclaration.builder()
                 .name("get_task_types")
-                .description("Returns all user's task types with name and associated project.")
+                .description("Returns the user's task types. If projectName is provided, returns only types for that project.")
                 .parameters(Schema.builder()
                         .type("OBJECT")
-                        .properties(Map.of())
+                        .properties(Map.of(
+                                "projectName", Schema.builder()
+                                        .type("STRING")
+                                        .description("Filter task types by exact project name.")
+                                        .build()
+                        ))
+                        .build())
+                .build();
+
+        FunctionDeclaration createTask = FunctionDeclaration.builder()
+                .name("create_task")
+                .description("Creates a new task for the user. Call this only after collecting all required information from the user.")
+                .parameters(Schema.builder()
+                        .type("OBJECT")
+                        .required(List.of("title"))
+                        .properties(Map.of(
+                                "title", Schema.builder()
+                                        .type("STRING")
+                                        .description("Title of the task.")
+                                        .build(),
+                                "description", Schema.builder()
+                                        .type("STRING")
+                                        .description("Optional description of the task.")
+                                        .build(),
+                                "status", Schema.builder()
+                                        .type("STRING")
+                                        .description("Initial status of the task.")
+                                        .enum_(List.of("PLANNED", "DOING", "DONE"))
+                                        .build(),
+                                "projectName", Schema.builder()
+                                        .type("STRING")
+                                        .description("Exact name of the project to associate the task with.")
+                                        .build(),
+                                "taskTypeName", Schema.builder()
+                                        .type("STRING")
+                                        .description("Exact name of the task type to associate the task with.")
+                                        .build()
+                        ))
                         .build())
                 .build();
 
         return Tool.builder()
-                .functionDeclarations(List.of(getTasks, getProjects, getTaskTypes))
+                .functionDeclarations(List.of(getTasks, getProjects, getTaskTypes, createTask))
                 .build();
     }
 
@@ -410,7 +487,7 @@ public class GeminiService {
 
         return switch (functionName) {
             case "get_tasks" -> {
-                List<Task> tasks = taskRepository.findByUserIdOrderByCreatedAtDesc(userId);
+                List<Task> tasks = taskRepository.findByUserIdOrdered(userId);
                 Map<Integer, String> projectNames = projectRepository.findByUserIdOrderByNameAsc(userId)
                         .stream().collect(Collectors.toMap(Project::getId, Project::getName));
                 Map<Integer, String> taskTypeNames = taskTypeRepository.findByProject_UserIdOrderByNameAsc(userId)
@@ -478,6 +555,14 @@ public class GeminiService {
                 Map<Integer, String> projectNames = projectRepository.findByUserIdOrderByNameAsc(userId)
                         .stream().collect(Collectors.toMap(Project::getId, Project::getName));
 
+                String projectFilter = args.get("projectName") != null ? args.get("projectName").toString() : null;
+                if (projectFilter != null) {
+                    taskTypes = taskTypes.stream()
+                            .filter(tt -> projectNames.getOrDefault(tt.getProjectId(), "")
+                                    .equalsIgnoreCase(projectFilter))
+                            .toList();
+                }
+
                 List<Map<String, Object>> typeList = taskTypes.stream().map(tt -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("name", tt.getName());
@@ -485,6 +570,61 @@ public class GeminiService {
                     return m;
                 }).toList();
                 yield Map.of("taskTypes", typeList);
+            }
+            case "create_task" -> {
+                String title = args.get("title") != null ? args.get("title").toString() : null;
+                if (title == null || title.isBlank()) {
+                    yield Map.of("error", "title is required");
+                }
+
+                String description = args.get("description") != null ? args.get("description").toString() : null;
+                String status = args.get("status") != null ? args.get("status").toString() : "PLANNED";
+                String projectName = args.get("projectName") != null ? args.get("projectName").toString() : null;
+                String taskTypeName = args.get("taskTypeName") != null ? args.get("taskTypeName").toString() : null;
+
+                User user = userRepository.findById(userId)
+                        .orElseThrow(() -> new RuntimeException("User not found"));
+
+                Task task = Task.builder()
+                        .title(title)
+                        .description(description)
+                        .status(status)
+                        .priority("MEDIUM")
+                        .user(user)
+                        .build();
+
+                boolean projectNotFound = false;
+                if (projectName != null) {
+                    Optional<Project> matchedProject = projectRepository.findByUserIdOrderByNameAsc(userId).stream()
+                            .filter(p -> p.getName().equalsIgnoreCase(projectName))
+                            .findFirst();
+                    if (matchedProject.isPresent()) {
+                        task.setProject(matchedProject.get());
+                    } else {
+                        projectNotFound = true;
+                    }
+                }
+
+                boolean typeNotFound = false;
+                if (taskTypeName != null) {
+                    Optional<TaskType> matchedType = taskTypeRepository.findByProject_UserIdOrderByNameAsc(userId).stream()
+                            .filter(tt -> tt.getName().equalsIgnoreCase(taskTypeName))
+                            .findFirst();
+                    if (matchedType.isPresent()) {
+                        task.setTaskType(matchedType.get());
+                    } else {
+                        typeNotFound = true;
+                    }
+                }
+
+                Task saved = taskRepository.save(task);
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("success", true);
+                result.put("title", saved.getTitle());
+                result.put("status", translateStatus(saved.getStatus(), language));
+                if (projectNotFound) result.put("projectNotFound", true);
+                if (typeNotFound) result.put("typeNotFound", true);
+                yield result;
             }
             default -> Map.of("error", messageService.get("error.gemini.unknown_tool", functionName));
         };

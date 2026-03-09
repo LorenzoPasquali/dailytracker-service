@@ -5,6 +5,7 @@ import java.util.Map;
 
 public record ChatResponse(
         String reply,
-        List<Map<String, String>> history
+        List<Map<String, String>> history,
+        boolean tasksCreated
 ) {
 }

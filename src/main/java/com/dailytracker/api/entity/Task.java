@@ -26,6 +26,12 @@ public class Task {
     @Column(nullable = false)
     private String status;
 
+    @Column(nullable = false)
+    private String priority = "MEDIUM";
+
+    @Column(name = "position")
+    private Integer position;
+
     @Column(name = "\"createdAt\"", nullable = false, updatable = false)
     private Instant createdAt;
 
