@@ -1,6 +1,7 @@
 package com.dailytracker.api.dto.request;
 
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 
 public record TaskUpdateRequest(
         @Size(max = 200) String title,
@@ -8,5 +9,6 @@ public record TaskUpdateRequest(
         String status,
         String priority,
         Integer projectId,
-        Integer taskTypeId
+        Integer taskTypeId,
+        Instant createdAt
 ) {}

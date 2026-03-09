@@ -32,7 +32,7 @@ public class Task {
     @Column(name = "position")
     private Integer position;
 
-    @Column(name = "\"createdAt\"", nullable = false, updatable = false)
+    @Column(name = "\"createdAt\"", nullable = false)
     private Instant createdAt;
 
     @Column(name = "\"updatedAt\"", nullable = false)

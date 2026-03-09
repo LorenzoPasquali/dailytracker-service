@@ -100,6 +100,9 @@ public class TaskService {
                     .orElse(null);
             task.setTaskType(taskType);
         }
+        if (request.createdAt() != null) {
+            task.setCreatedAt(request.createdAt());
+        }
 
         task = taskRepository.save(task);
         return toResponse(task);
