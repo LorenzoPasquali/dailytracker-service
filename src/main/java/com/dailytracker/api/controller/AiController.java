@@ -1,6 +1,7 @@
 package com.dailytracker.api.controller;
 
 import com.dailytracker.api.dto.request.ChatRequest;
+import com.dailytracker.api.dto.response.ChatResponse;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.exception.BadRequestException;
 import com.dailytracker.api.exception.ResourceNotFoundException;
@@ -59,7 +60,7 @@ public class AiController {
     }
 
     @PostMapping("/chat")
-    public Map<String, Object> chat(@Valid @RequestBody ChatRequest request, Authentication auth) {
+    public ChatResponse chat(@Valid @RequestBody ChatRequest request, Authentication auth) {
         Number userId = (Number) auth.getPrincipal();
         User user = userRepository.findById(userId.intValue())
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
@@ -72,7 +73,6 @@ public class AiController {
         } catch (RuntimeException e) {
             throw new BadRequestException(messageService.get("error.gemini.key.decrypt"));
         }
-        String reply = geminiService.chat(decryptedKey, request.history(), userId.intValue(), user.getLanguage());
-        return Map.of("reply", reply);
+        return geminiService.chat(decryptedKey, request.history(), userId.intValue(), user.getLanguage());
     }
 }

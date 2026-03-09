@@ -1,5 +1,6 @@
 package com.dailytracker.api.service;
 
+import com.dailytracker.api.dto.response.ChatResponse;
 import com.dailytracker.api.entity.Project;
 import com.dailytracker.api.entity.Task;
 import com.dailytracker.api.entity.TaskType;
@@ -8,6 +9,7 @@ import com.dailytracker.api.i18n.MessageService;
 import com.dailytracker.api.repository.ProjectRepository;
 import com.dailytracker.api.repository.TaskRepository;
 import com.dailytracker.api.repository.TaskTypeRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import com.google.genai.types.*;
 import lombok.RequiredArgsConstructor;
@@ -47,7 +49,6 @@ public class GeminiService {
                     Seu papel é ajudar o usuário a:
                     - Preparar resumos para daily scrums — quando pedido, gere um resumo curto e direto
                       do que foi feito, o que está em progresso e o que está planejado para o período solicitado.
-                      Use bullet points curtos sem texto desnecessário.
                     - Entender o estado atual das suas tarefas e projetos
                     - Identificar gargalos e tarefas paradas há muito tempo
                     - Analisar produtividade e distribuição de trabalho entre projetos
@@ -67,11 +68,15 @@ public class GeminiService {
                     Sempre respeite esse mapeamento ao filtrar por status. Se o usuário pedir "tarefas pendentes",
                     busque apenas PLANNED. Se pedir "tarefas não concluídas", busque PLANNED e DOING separadamente.
 
-                    Regras:
+                    Regras de Formatação (OBRIGATÓRIO):
+                    - NUNCA use asterisco (*) como marcador de lista. Use sempre hífen (-) para listas.
+                    - NUNCA use ** para negrito. Use os nomes de status como cabeçalhos simples de texto.
+                    - Ao listar tarefas, apresente-as de forma limpa: "- Título da Tarefa (Projeto: Nome, Tipo: Tipo)".
+                    - Para resumos de daily, organize por status com cabeçalhos simples seguidos de dois-pontos.
                     - Nunca mencione IDs internos. Use sempre nomes e títulos.
                     - Responda sempre em português do Brasil.
                     - Seja conciso e orientado a dados. Resumos de daily devem ser curtos.
-                    - Use formatação markdown quando apropriado.
+                    - Não use nenhum marcador markdown além de cabeçalhos (#) quando estritamente necessário.
                     - Ao exibir status, use os nomes traduzidos: Planejado, Em Progresso, Feito.
                     """,
             "en-US", """
@@ -107,11 +112,15 @@ public class GeminiService {
                     - "completed", "done", "finished" = tasks with Done (DONE) status
                     Always respect this mapping when filtering by status.
 
-                    Rules:
+                    Formatting Rules (MANDATORY):
+                    - NEVER use asterisk (*) as a list bullet. Always use hyphen (-) for lists.
+                    - NEVER use ** for bold. Use status names as plain text headings.
+                    - When listing tasks, use: "- Task Title (Project: Name, Type: Type)".
+                    - For daily summaries, organize by status with simple plain-text headings followed by a colon.
                     - Never mention internal IDs. Always use names and titles.
                     - Always respond in English.
                     - Be concise and data-oriented. Daily summaries should be short.
-                    - Use markdown formatting when appropriate.
+                    - Do not use any markdown markers besides headings (#) when strictly necessary.
                     - When displaying status, use the translated names: Planned, In Progress, Done.
                     """,
             "es", """
@@ -147,14 +156,18 @@ public class GeminiService {
                     - "completadas", "hechas", "finalizadas", "listas" = tareas con estado Hecho (DONE)
                     Siempre respeta este mapeo al filtrar por estado.
 
-                    Reglas:
+                    Reglas de Formato (OBLIGATORIO):
+                    - NUNCA uses asterisco (*) como marcador de lista. Usa siempre guion (-) para listas.
+                    - NUNCA uses ** para negrita. Usa los nombres de estado como encabezados simples de texto.
+                    - Al listar tareas, usa: "- Título de la Tarea (Proyecto: Nombre, Tipo: Tipo)".
+                    - Para resúmenes de daily, organiza por estado con encabezados simples de texto plano seguidos de dos puntos.
                     - Nunca menciones IDs internos. Usa siempre nombres y títulos.
                     - Responde siempre en español.
                     - Sé conciso y orientado a datos. Los resúmenes de daily deben ser cortos.
-                    - Usa formato markdown cuando sea apropiado.
+                    - No uses ningún marcador markdown además de encabezados (#) cuando sea estrictamente necesario.
                     - Al mostrar estados, usa los nombres traducidos: Planificado, En Progreso, Hecho.
                     """
-    );
+                    );
 
     private static final Map<String, Map<String, String>> STATUS_LABELS = Map.of(
             "pt-BR", Map.of("PLANNED", "Planejado", "DOING", "Em Progresso", "DONE", "Feito"),
@@ -180,11 +193,13 @@ public class GeminiService {
     private final ProjectRepository projectRepository;
     private final TaskTypeRepository taskTypeRepository;
     private final MessageService messageService;
+    private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
-    public String chat(String apiKey, List<Map<String, String>> history, Integer userId, String language) {
+    public ChatResponse chat(String apiKey, List<Map<String, String>> historyInput, Integer userId, String language) {
         try {
             Client client = Client.builder().apiKey(apiKey).build();
+            List<Map<String, String>> history = new ArrayList<>(historyInput);
 
             List<Content> contents = buildContents(history);
             GenerateContentConfig config = buildConfig(language);
@@ -198,9 +213,13 @@ public class GeminiService {
                     && !response.functionCalls().isEmpty()
                     && toolCallCount < MAX_TOOL_CALLS) {
 
-                response.candidates()
+                // Model turn with tool calls
+                Content modelContent = response.candidates()
                         .flatMap(c -> c.isEmpty() ? Optional.empty() : c.get(0).content())
-                        .ifPresent(contents::add);
+                        .orElseThrow();
+
+                contents.add(modelContent);
+                addContentToHistory(history, modelContent);
 
                 List<Part> functionResponseParts = new ArrayList<>();
                 for (FunctionCall fc : response.functionCalls()) {
@@ -216,15 +235,29 @@ public class GeminiService {
                 }
                 toolCallCount++;
 
-                contents.add(Content.builder()
+                // User turn with tool responses
+                Content userContent = Content.builder()
                         .role("user")
                         .parts(functionResponseParts)
-                        .build());
+                        .build();
+
+                contents.add(userContent);
+                addContentToHistory(history, userContent);
 
                 response = client.models.generateContent(MODEL_ID, contents, config);
             }
 
-            return response.text() != null ? response.text() : messageService.get("error.gemini.no_response");
+            // Final model turn (the text response)
+            Content finalContent = response.candidates()
+                    .flatMap(c -> c.isEmpty() ? Optional.empty() : c.get(0).content())
+                    .orElse(null);
+
+            if (finalContent != null) {
+                addContentToHistory(history, finalContent);
+            }
+
+            String reply = response.text() != null ? response.text() : messageService.get("error.gemini.no_response");
+            return new ChatResponse(reply, history);
 
         } catch (BadRequestException e) {
             throw e;
@@ -238,11 +271,47 @@ public class GeminiService {
         }
     }
 
+    private void addContentToHistory(List<Map<String, String>> history, Content content) {
+        Map<String, String> entry = new HashMap<>();
+        entry.put("role", content.role().orElse("user"));
+
+        List<Part> parts = content.parts().orElse(List.of());
+
+        try {
+            // We store the raw JSON of parts to reconstruct it later
+            entry.put("parts", objectMapper.writeValueAsString(parts));
+            // Keep 'text' for backward compatibility or simple display if needed
+            parts.stream()
+                    .filter(p -> p.text().isPresent())
+                    .findFirst()
+                    .ifPresent(p -> entry.put("text", p.text().get()));
+        } catch (Exception e) {
+            log.error("Error serializing content parts", e);
+        }
+
+        history.add(entry);
+    }
+
     private List<Content> buildContents(List<Map<String, String>> history) {
         List<Content> contents = new ArrayList<>();
         for (Map<String, String> msg : history) {
             String role = msg.get("role");
+            String partsJson = msg.get("parts");
             String text = msg.get("text");
+
+            if (partsJson != null) {
+                try {
+                    Part[] partsArray = objectMapper.readValue(partsJson, Part[].class);
+                    contents.add(Content.builder()
+                            .role(role)
+                            .parts(Arrays.asList(partsArray))
+                            .build());
+                    continue;
+                } catch (Exception e) {
+                    log.error("Error deserializing content parts", e);
+                }
+            }
+
             if (role != null && text != null) {
                 contents.add(Content.builder()
                         .role(role.equals("model") ? "model" : "user")
