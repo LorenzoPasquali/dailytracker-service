@@ -122,14 +122,14 @@ public class TaskService {
     }
 
     private Integer resolvePositionForNewTask(Integer userId, String status, String priority) {
-        if ("HIGH".equals(priority)) {
-            return taskRepository.findMinPositionByUserIdAndStatus(userId, status)
-                    .map(min -> min - 10)
-                    .orElse(null);
-        } else {
+        if ("LOW".equals(priority) && "PLANNED".equals(status)) {
             return taskRepository.findMaxPositionByUserIdAndStatus(userId, status)
                     .map(max -> max + 10)
-                    .orElse(null);
+                    .orElse(10);
+        } else {
+            return taskRepository.findMinPositionByUserIdAndStatus(userId, status)
+                    .map(min -> min - 10)
+                    .orElse(-10);
         }
     }
 
