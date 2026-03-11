@@ -35,7 +35,7 @@ public class TaskTypeService {
                 .project(project)
                 .build();
 
-        taskType = taskTypeRepository.save(taskType);
+        taskType = taskTypeRepository.saveAndFlush(taskType);
         Map<String, Object> response = toResponse(taskType);
         eventPublisher.publishTaskTypeEvent(workspaceId, "TASK_TYPE_CREATED", response);
         return response;
@@ -52,7 +52,7 @@ public class TaskTypeService {
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.task_type.not_found")));
 
         taskType.setName(request.name());
-        taskType = taskTypeRepository.save(taskType);
+        taskType = taskTypeRepository.saveAndFlush(taskType);
         Map<String, Object> response = toResponse(taskType);
         eventPublisher.publishTaskTypeEvent(workspaceId, "TASK_TYPE_UPDATED", response);
         return response;
@@ -65,7 +65,7 @@ public class TaskTypeService {
         TaskType taskType = taskTypeRepository.findByIdAndProject_WorkspaceId(id, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.task_type.not_found")));
 
-        Integer projectId = taskType.getProjectId();
+        Integer projectId = taskType.getProject().getId();
         taskTypeRepository.delete(taskType);
         eventPublisher.publishTaskTypeEvent(workspaceId, "TASK_TYPE_DELETED", Map.of("id", id, "projectId", projectId));
     }
@@ -74,7 +74,7 @@ public class TaskTypeService {
         return Map.of(
                 "id", taskType.getId(),
                 "name", taskType.getName(),
-                "projectId", taskType.getProjectId()
+                "projectId", taskType.getProject().getId()
         );
     }
 }

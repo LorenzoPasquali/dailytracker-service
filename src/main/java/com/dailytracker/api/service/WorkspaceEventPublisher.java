@@ -1,5 +1,6 @@
 package com.dailytracker.api.service;
 
+import com.dailytracker.api.entity.Workspace;
 import com.dailytracker.api.repository.WorkspaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -32,6 +33,18 @@ public class WorkspaceEventPublisher {
     public void publishMemberEvent(Integer workspaceId, String eventType, Map<String, Object> payload) {
         if (!isSharedWorkspace(workspaceId)) return;
         publish(workspaceId, eventType, payload);
+    }
+
+    public void publishWorkspaceEvent(Integer workspaceId, String eventType, Map<String, Object> payload) {
+        if (!isSharedWorkspace(workspaceId)) return;
+        publish(workspaceId, eventType, payload);
+    }
+
+    public void publishUserEventForMemberWorkspaces(Integer userId, String eventType, Map<String, Object> payload) {
+        for (Workspace workspace : workspaceRepository.findAllByMemberUserId(userId)) {
+            if (Boolean.TRUE.equals(workspace.getIsPersonal())) continue;
+            publish(workspace.getId(), eventType, payload);
+        }
     }
 
     private void publish(Integer workspaceId, String eventType, Map<String, Object> payload) {

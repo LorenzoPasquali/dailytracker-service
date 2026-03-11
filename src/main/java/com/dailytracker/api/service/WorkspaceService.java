@@ -95,7 +95,9 @@ public class WorkspaceService {
                 .build();
         memberRepository.save(member);
 
-        return toResponse(workspace, userId);
+        Map<String, Object> response = toResponse(workspace, userId);
+        eventPublisher.publishWorkspaceEvent(workspace.getId(), "WORKSPACE_CREATED", response);
+        return response;
     }
 
     @Transactional
@@ -108,7 +110,9 @@ public class WorkspaceService {
         }
 
         workspace.setName(name);
-        return toResponse(workspaceRepository.save(workspace), userId);
+        Map<String, Object> response = toResponse(workspaceRepository.save(workspace), userId);
+        eventPublisher.publishWorkspaceEvent(workspaceId, "WORKSPACE_UPDATED", response);
+        return response;
     }
 
     @Transactional
@@ -120,6 +124,8 @@ public class WorkspaceService {
             throw new BadRequestException(messageService.get("error.workspace.personal.delete"));
         }
 
+        eventPublisher.publishWorkspaceEvent(workspaceId, "WORKSPACE_DELETED",
+                Map.of("id", workspaceId, "name", workspace.getName(), "userId", userId));
         workspaceRepository.delete(workspace);
     }
 
@@ -139,6 +145,8 @@ public class WorkspaceService {
         inviteRepository.save(invite);
 
         String url = frontendUrl + "/invite/" + token;
+        eventPublisher.publishWorkspaceEvent(workspaceId, "WORKSPACE_INVITE_CREATED",
+                Map.of("workspaceId", workspaceId, "createdBy", userId));
         return Map.of("token", token, "url", url);
     }
 

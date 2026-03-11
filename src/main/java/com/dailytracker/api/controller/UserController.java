@@ -5,6 +5,7 @@ import com.dailytracker.api.entity.User;
 import com.dailytracker.api.exception.ResourceNotFoundException;
 import com.dailytracker.api.i18n.MessageService;
 import com.dailytracker.api.repository.UserRepository;
+import com.dailytracker.api.service.WorkspaceEventPublisher;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ public class UserController {
 
     private final UserRepository userRepository;
     private final MessageService messageService;
+    private final WorkspaceEventPublisher eventPublisher;
 
     @GetMapping("/me")
     public Map<String, Object> me(Authentication auth) {
@@ -43,6 +45,8 @@ public class UserController {
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
         user.setOnboardingCompleted(true);
         userRepository.save(user);
+        eventPublisher.publishUserEventForMemberWorkspaces(user.getId(), "USER_ONBOARDING_COMPLETED",
+                Map.of("id", user.getId(), "onboardingCompleted", true));
         return ResponseEntity.ok().build();
     }
 
@@ -57,6 +61,8 @@ public class UserController {
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
         user.setName(name.strip());
         userRepository.save(user);
+        eventPublisher.publishUserEventForMemberWorkspaces(user.getId(), "USER_NAME_UPDATED",
+                Map.of("id", user.getId(), "name", user.getName()));
         return ResponseEntity.noContent().build();
     }
 
@@ -67,6 +73,8 @@ public class UserController {
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
         user.setLanguage(request.language());
         userRepository.save(user);
+        eventPublisher.publishUserEventForMemberWorkspaces(user.getId(), "USER_LANGUAGE_UPDATED",
+                Map.of("id", user.getId(), "language", user.getLanguage()));
         return ResponseEntity.noContent().build();
     }
 }

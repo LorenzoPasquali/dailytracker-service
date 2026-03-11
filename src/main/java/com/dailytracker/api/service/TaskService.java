@@ -84,7 +84,7 @@ public class TaskService {
             task.setAssignee(assignee);
         }
 
-        task = taskRepository.save(task);
+        task = taskRepository.saveAndFlush(task);
         Map<String, Object> response = toResponse(task);
         eventPublisher.publishTaskEvent(workspaceId, "TASK_CREATED", response);
         return response;
@@ -133,7 +133,7 @@ public class TaskService {
             task.setAssignee(assignee);
         }
 
-        task = taskRepository.save(task);
+        task = taskRepository.saveAndFlush(task);
         Map<String, Object> response = toResponse(task);
         eventPublisher.publishTaskEvent(workspaceId, "TASK_UPDATED", response);
         return response;
