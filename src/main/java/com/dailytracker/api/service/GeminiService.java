@@ -11,6 +11,7 @@ import com.dailytracker.api.repository.ProjectRepository;
 import com.dailytracker.api.repository.TaskRepository;
 import com.dailytracker.api.repository.TaskTypeRepository;
 import com.dailytracker.api.repository.UserRepository;
+import com.dailytracker.api.repository.WorkspaceRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import com.google.genai.types.*;
@@ -49,8 +50,10 @@ public class GeminiService {
     private final MessageService messageService;
     private final ObjectMapper objectMapper;
 
+    private final WorkspaceRepository workspaceRepository;
+
     @Transactional
-    public ChatResponse chat(String apiKey, List<Map<String, String>> historyInput, Integer userId, String language) {
+    public ChatResponse chat(String apiKey, List<Map<String, String>> historyInput, Integer userId, Integer workspaceId, String language) {
         try {
             Client client = Client.builder().apiKey(apiKey).build();
             List<Map<String, String>> history = new ArrayList<>(historyInput);
@@ -80,7 +83,7 @@ public class GeminiService {
                 for (FunctionCall fc : response.functionCalls()) {
                     String fnName = fc.name().orElse("");
                     Map<String, Object> fnArgs = fc.args().orElse(Map.of());
-                    Map<String, Object> result = executeTool(fnName, fnArgs, userId, language);
+                    Map<String, Object> result = executeTool(fnName, fnArgs, userId, workspaceId, language);
                     if ("create_task".equals(fnName) && Boolean.TRUE.equals(result.get("success"))) {
                         tasksCreatedInSession = true;
                     }
@@ -300,16 +303,16 @@ public class GeminiService {
         return messageService.get("ai.status." + status);
     }
 
-    private Map<String, Object> executeTool(String functionName, Map<String, Object> args, Integer userId, String language) {
+    private Map<String, Object> executeTool(String functionName, Map<String, Object> args, Integer userId, Integer workspaceId, String language) {
         String noProject = messageService.get("ai.no_project");
         String noType = messageService.get("ai.no_type");
 
         return switch (functionName) {
             case "get_tasks" -> {
-                List<Task> tasks = taskRepository.findByUserIdOrdered(userId);
-                Map<Integer, String> projectNames = projectRepository.findByUserIdOrderByNameAsc(userId)
+                List<Task> tasks = taskRepository.findByWorkspaceIdOrdered(workspaceId);
+                Map<Integer, String> projectNames = projectRepository.findByWorkspaceIdOrderByNameAsc(workspaceId)
                         .stream().collect(Collectors.toMap(Project::getId, Project::getName));
-                Map<Integer, String> taskTypeNames = taskTypeRepository.findByProject_UserIdOrderByNameAsc(userId)
+                Map<Integer, String> taskTypeNames = taskTypeRepository.findByProject_WorkspaceId(workspaceId)
                         .stream().collect(Collectors.toMap(TaskType::getId, TaskType::getName));
 
                 String date = args.get("date") != null ? args.get("date").toString() : null;
@@ -360,7 +363,7 @@ public class GeminiService {
                 yield Map.of("tasks", taskList, "count", taskList.size());
             }
             case "get_projects" -> {
-                List<Project> projects = projectRepository.findByUserIdOrderByNameAsc(userId);
+                List<Project> projects = projectRepository.findByWorkspaceIdOrderByNameAsc(workspaceId);
                 List<Map<String, Object>> projectList = projects.stream().map(p -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("name", p.getName());
@@ -370,8 +373,8 @@ public class GeminiService {
                 yield Map.of("projects", projectList);
             }
             case "get_task_types" -> {
-                List<TaskType> taskTypes = taskTypeRepository.findByProject_UserIdOrderByNameAsc(userId);
-                Map<Integer, String> projectNames = projectRepository.findByUserIdOrderByNameAsc(userId)
+                List<TaskType> taskTypes = taskTypeRepository.findByProject_WorkspaceId(workspaceId);
+                Map<Integer, String> projectNames = projectRepository.findByWorkspaceIdOrderByNameAsc(workspaceId)
                         .stream().collect(Collectors.toMap(Project::getId, Project::getName));
 
                 String projectFilter = args.get("projectName") != null ? args.get("projectName").toString() : null;
@@ -404,17 +407,21 @@ public class GeminiService {
                 User user = userRepository.findById(userId)
                         .orElseThrow(() -> new RuntimeException("User not found"));
 
+                var workspace = workspaceRepository.findById(workspaceId)
+                        .orElseThrow(() -> new RuntimeException("Workspace not found"));
+
                 Task task = Task.builder()
                         .title(title)
                         .description(description)
                         .status(status)
                         .priority("MEDIUM")
                         .user(user)
+                        .workspace(workspace)
                         .build();
 
                 boolean projectNotFound = false;
                 if (projectName != null) {
-                    Optional<Project> matchedProject = projectRepository.findByUserIdOrderByNameAsc(userId).stream()
+                    Optional<Project> matchedProject = projectRepository.findByWorkspaceIdOrderByNameAsc(workspaceId).stream()
                             .filter(p -> p.getName().equalsIgnoreCase(projectName))
                             .findFirst();
                     if (matchedProject.isPresent()) {
@@ -426,7 +433,7 @@ public class GeminiService {
 
                 boolean typeNotFound = false;
                 if (taskTypeName != null) {
-                    Optional<TaskType> matchedType = taskTypeRepository.findByProject_UserIdOrderByNameAsc(userId).stream()
+                    Optional<TaskType> matchedType = taskTypeRepository.findByProject_WorkspaceId(workspaceId).stream()
                             .filter(tt -> tt.getName().equalsIgnoreCase(taskTypeName))
                             .findFirst();
                     if (matchedType.isPresent()) {

@@ -11,4 +11,5 @@ public interface TaskTypeRepository extends JpaRepository<TaskType, Integer> {
     List<TaskType> findByProject_UserIdOrderByNameAsc(Integer userId);
 
     Optional<TaskType> findByIdAndProject_WorkspaceId(Integer id, Integer workspaceId);
+    List<TaskType> findByProject_WorkspaceId(Integer workspaceId);
 }

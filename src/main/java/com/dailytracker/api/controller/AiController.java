@@ -74,7 +74,8 @@ public class AiController {
             @RequestParam(required = false) Integer workspaceId,
             Authentication auth) {
         Number userId = (Number) auth.getPrincipal();
-        assertPersonalWorkspace(workspaceId, userId.intValue());
+        int wsId = workspaceId != null ? workspaceId : workspaceService.getPersonalWorkspaceId(userId.intValue());
+        assertPersonalWorkspace(wsId, userId.intValue());
         User user = userRepository.findById(userId.intValue())
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
         if (user.getGeminiKey() == null || user.getGeminiKey().isBlank()) {
@@ -86,7 +87,7 @@ public class AiController {
         } catch (RuntimeException e) {
             throw new BadRequestException(messageService.get("error.gemini.key.decrypt"));
         }
-        return geminiService.chat(decryptedKey, request.history(), userId.intValue(), user.getLanguage());
+        return geminiService.chat(decryptedKey, request.history(), userId.intValue(), wsId, user.getLanguage());
     }
 
     private void assertPersonalWorkspace(Integer workspaceId, int userId) {

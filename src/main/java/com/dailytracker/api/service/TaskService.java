@@ -69,13 +69,13 @@ public class TaskService {
 
         if (request.projectId() != null) {
             Project project = projectRepository.findByIdAndWorkspaceId(request.projectId(), workspaceId)
-                    .orElse(null);
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.project.not_found")));
             task.setProject(project);
         }
 
         if (request.taskTypeId() != null) {
-            TaskType taskType = taskTypeRepository.findById(request.taskTypeId())
-                    .orElse(null);
+            TaskType taskType = taskTypeRepository.findByIdAndProject_WorkspaceId(request.taskTypeId(), workspaceId)
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.task_type.not_found")));
             task.setTaskType(taskType);
         }
 
@@ -113,12 +113,12 @@ public class TaskService {
         }
         if (request.projectId() != null) {
             Project project = projectRepository.findByIdAndWorkspaceId(request.projectId(), workspaceId)
-                    .orElse(null);
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.project.not_found")));
             task.setProject(project);
         }
         if (request.taskTypeId() != null) {
-            TaskType taskType = taskTypeRepository.findById(request.taskTypeId())
-                    .orElse(null);
+            TaskType taskType = taskTypeRepository.findByIdAndProject_WorkspaceId(request.taskTypeId(), workspaceId)
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.task_type.not_found")));
             task.setTaskType(taskType);
         }
         if (request.createdAt() != null) {
@@ -185,10 +185,10 @@ public class TaskService {
         map.put("updatedAt", task.getUpdatedAt().toString());
         map.put("userId", task.getUser().getId());
         map.put("reporterName", task.getUser().getName());
-        map.put("projectId", task.getProjectId());
-        map.put("taskTypeId", task.getTaskTypeId());
-        map.put("workspaceId", task.getWorkspaceId());
-        map.put("assigneeId", task.getAssigneeId());
+        map.put("projectId", task.getProject() != null ? task.getProject().getId() : null);
+        map.put("taskTypeId", task.getTaskType() != null ? task.getTaskType().getId() : null);
+        map.put("workspaceId", task.getWorkspace().getId());
+        map.put("assigneeId", task.getAssignee() != null ? task.getAssignee().getId() : null);
         map.put("assigneeName", task.getAssignee() != null ? task.getAssignee().getName() : messageService.get("task.unassigned"));
         return map;
     }
