@@ -10,5 +10,6 @@ public record TaskUpdateRequest(
         String priority,
         Integer projectId,
         Integer taskTypeId,
-        Instant createdAt
+        Instant createdAt,
+        Integer assigneeId
 ) {}

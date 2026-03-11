@@ -29,22 +29,26 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final MessageService messageService;
+    private final WorkspaceService workspaceService;
 
     @Value("${app.jwt.refresh-expiration}")
     private long refreshExpiration;
 
+    @Transactional
     public Integer register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new BadRequestException(messageService.get("error.email.exists"));
         }
 
         User user = User.builder()
+                .name(request.name())
                 .email(request.email())
                 .password(passwordEncoder.encode(request.password()))
                 .language(request.language() != null ? request.language() : "pt-BR")
                 .build();
 
         user = userRepository.save(user);
+        workspaceService.createPersonalWorkspace(user);
         return user.getId();
     }
 

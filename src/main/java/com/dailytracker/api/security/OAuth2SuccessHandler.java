@@ -4,6 +4,7 @@ import com.dailytracker.api.entity.RefreshToken;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.repository.UserRepository;
 import com.dailytracker.api.service.AuthService;
+import com.dailytracker.api.service.WorkspaceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     private final UserRepository userRepository;
     private final JwtService jwtService;
     private final AuthService authService;
+    private final WorkspaceService workspaceService;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
@@ -37,6 +39,9 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
         String googleId = oAuth2User.getAttribute("sub");
         String email = oAuth2User.getAttribute("email");
+        String googleName = oAuth2User.getAttribute("given_name") != null
+                ? oAuth2User.getAttribute("given_name")
+                : (email != null ? email.split("@")[0] : "User");
 
         User user = userRepository.findByGoogleId(googleId)
                 .orElseGet(() -> {
@@ -46,12 +51,17 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
                                 existingUser.setGoogleId(googleId);
                                 return userRepository.save(existingUser);
                             })
-                            .orElseGet(() -> userRepository.save(
-                                    User.builder()
-                                            .googleId(googleId)
-                                            .email(email)
-                                            .build()
-                            ));
+                            .orElseGet(() -> {
+                                User newUser = userRepository.save(
+                                        User.builder()
+                                                .googleId(googleId)
+                                                .email(email)
+                                                .name(googleName)
+                                                .build()
+                                );
+                                workspaceService.createPersonalWorkspace(newUser);
+                                return newUser;
+                            });
                 });
 
         String token = jwtService.generateToken(user.getId());

@@ -9,4 +9,6 @@ import java.util.Optional;
 public interface TaskTypeRepository extends JpaRepository<TaskType, Integer> {
     Optional<TaskType> findByIdAndProject_UserId(Integer id, Integer userId);
     List<TaskType> findByProject_UserIdOrderByNameAsc(Integer userId);
+
+    Optional<TaskType> findByIdAndProject_WorkspaceId(Integer id, Integer workspaceId);
 }

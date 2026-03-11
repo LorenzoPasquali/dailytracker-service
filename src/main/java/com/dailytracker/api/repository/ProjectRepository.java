@@ -9,4 +9,7 @@ import java.util.Optional;
 public interface ProjectRepository extends JpaRepository<Project, Integer> {
     List<Project> findByUserIdOrderByNameAsc(Integer userId);
     Optional<Project> findByIdAndUserId(Integer id, Integer userId);
+
+    List<Project> findByWorkspaceIdOrderByNameAsc(Integer workspaceId);
+    Optional<Project> findByIdAndWorkspaceId(Integer id, Integer workspaceId);
 }

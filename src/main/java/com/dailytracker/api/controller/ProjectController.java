@@ -2,6 +2,7 @@ package com.dailytracker.api.controller;
 
 import com.dailytracker.api.dto.request.ProjectRequest;
 import com.dailytracker.api.service.ProjectService;
+import com.dailytracker.api.service.WorkspaceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,33 +18,54 @@ import java.util.Map;
 public class ProjectController {
 
     private final ProjectService projectService;
+    private final WorkspaceService workspaceService;
 
     @GetMapping
-    public List<Map<String, Object>> getAll(Authentication auth) {
-        Number userId = (Number) auth.getPrincipal();
-        return projectService.findAllByUser(userId.intValue());
+    public List<Map<String, Object>> getAll(
+            @RequestParam(required = false) Integer workspaceId,
+            Authentication auth) {
+        int userId = userId(auth);
+        int wsId = resolveWorkspace(workspaceId, userId);
+        return projectService.findAllByWorkspace(wsId, userId);
     }
 
     @PostMapping
-    public ResponseEntity<Map<String, Object>> create(@Valid @RequestBody ProjectRequest request,
-                                                       Authentication auth) {
-        Number userId = (Number) auth.getPrincipal();
-        Map<String, Object> project = projectService.create(request, userId.intValue());
-        return ResponseEntity.status(201).body(project);
+    public ResponseEntity<Map<String, Object>> create(
+            @Valid @RequestBody ProjectRequest request,
+            @RequestParam(required = false) Integer workspaceId,
+            Authentication auth) {
+        int userId = userId(auth);
+        int wsId = resolveWorkspace(workspaceId, userId);
+        return ResponseEntity.status(201).body(projectService.create(request, userId, wsId));
     }
 
     @PutMapping("/{id}")
-    public Map<String, Object> update(@PathVariable Integer id,
-                                      @Valid @RequestBody ProjectRequest request,
-                                      Authentication auth) {
-        Number userId = (Number) auth.getPrincipal();
-        return projectService.update(id, request, userId.intValue());
+    public Map<String, Object> update(
+            @PathVariable Integer id,
+            @Valid @RequestBody ProjectRequest request,
+            @RequestParam(required = false) Integer workspaceId,
+            Authentication auth) {
+        int userId = userId(auth);
+        int wsId = resolveWorkspace(workspaceId, userId);
+        return projectService.update(id, request, userId, wsId);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id, Authentication auth) {
-        Number userId = (Number) auth.getPrincipal();
-        projectService.delete(id, userId.intValue());
+    public ResponseEntity<Void> delete(
+            @PathVariable Integer id,
+            @RequestParam(required = false) Integer workspaceId,
+            Authentication auth) {
+        int userId = userId(auth);
+        int wsId = resolveWorkspace(workspaceId, userId);
+        projectService.delete(id, userId, wsId);
         return ResponseEntity.noContent().build();
+    }
+
+    private int userId(Authentication auth) {
+        return ((Number) auth.getPrincipal()).intValue();
+    }
+
+    private int resolveWorkspace(Integer workspaceId, int userId) {
+        return workspaceId != null ? workspaceId : workspaceService.getPersonalWorkspaceId(userId);
     }
 }

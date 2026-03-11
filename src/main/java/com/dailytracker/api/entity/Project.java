@@ -31,6 +31,13 @@ public class Project {
     @JoinColumn(name = "\"userId\"", nullable = false)
     private User user;
 
+    @Column(name = "\"workspaceId\"", nullable = false, insertable = false, updatable = false)
+    private Integer workspaceId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "\"workspaceId\"", nullable = false)
+    private Workspace workspace;
+
     @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Task> tasks;
 

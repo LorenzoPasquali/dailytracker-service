@@ -21,6 +21,9 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
+    @Column(nullable = false, length = 20)
+    private String name;
+
     @Column
     private String password;
 
@@ -33,6 +36,10 @@ public class User {
     @Column(name = "\"language\"", nullable = false)
     @Builder.Default
     private String language = "pt-BR";
+
+    @Column(name = "\"onboardingCompleted\"", nullable = false)
+    @Builder.Default
+    private Boolean onboardingCompleted = false;
 
     @OneToMany(mappedBy = "user")
     private List<Task> tasks;

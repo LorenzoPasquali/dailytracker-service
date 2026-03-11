@@ -38,7 +38,9 @@ public class SecurityConfig {
                     "/auth/google",
                     "/auth/google/callback",
                     "/oauth2/**",
-                    "/healthz"
+                    "/healthz",
+                    "/ws/**",
+                    "/api/workspaces/invite/*"
                 ).permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()

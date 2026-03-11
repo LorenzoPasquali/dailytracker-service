@@ -59,6 +59,20 @@ public class Task {
     @JoinColumn(name = "\"taskTypeId\"")
     private TaskType taskType;
 
+    @Column(name = "\"workspaceId\"", nullable = false, insertable = false, updatable = false)
+    private Integer workspaceId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "\"workspaceId\"", nullable = false)
+    private Workspace workspace;
+
+    @Column(name = "\"assigneeId\"", insertable = false, updatable = false)
+    private Integer assigneeId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "\"assigneeId\"")
+    private User assignee;
+
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();

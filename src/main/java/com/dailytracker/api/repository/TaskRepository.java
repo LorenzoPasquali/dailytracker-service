@@ -26,11 +26,29 @@ public interface TaskRepository extends JpaRepository<Task, Integer> {
             """, nativeQuery = true)
     List<Task> findByUserIdOrdered(@Param("userId") Integer userId);
 
+    @Query(value = """
+            SELECT * FROM public."Task" WHERE "workspaceId" = :workspaceId
+            ORDER BY COALESCE(position, CASE priority
+                WHEN 'HIGH'   THEN -999999999
+                WHEN 'MEDIUM' THEN  999999998
+                WHEN 'LOW'    THEN  999999999
+                ELSE 999999998 END) ASC, "createdAt" DESC
+            """, nativeQuery = true)
+    List<Task> findByWorkspaceIdOrdered(@Param("workspaceId") Integer workspaceId);
+
     Optional<Task> findByIdAndUserId(Integer id, Integer userId);
+
+    Optional<Task> findByIdAndWorkspaceId(Integer id, Integer workspaceId);
 
     @Query("SELECT MIN(t.position) FROM Task t WHERE t.userId = :userId AND t.status = :status AND t.position IS NOT NULL")
     Optional<Integer> findMinPositionByUserIdAndStatus(@Param("userId") Integer userId, @Param("status") String status);
 
     @Query("SELECT MAX(t.position) FROM Task t WHERE t.userId = :userId AND t.status = :status AND t.position IS NOT NULL")
     Optional<Integer> findMaxPositionByUserIdAndStatus(@Param("userId") Integer userId, @Param("status") String status);
+
+    @Query("SELECT MIN(t.position) FROM Task t WHERE t.workspaceId = :workspaceId AND t.status = :status AND t.position IS NOT NULL")
+    Optional<Integer> findMinPositionByWorkspaceIdAndStatus(@Param("workspaceId") Integer workspaceId, @Param("status") String status);
+
+    @Query("SELECT MAX(t.position) FROM Task t WHERE t.workspaceId = :workspaceId AND t.status = :status AND t.position IS NOT NULL")
+    Optional<Integer> findMaxPositionByWorkspaceIdAndStatus(@Param("workspaceId") Integer workspaceId, @Param("status") String status);
 }

@@ -26,12 +26,38 @@ public class UserController {
         Number userId = (Number) auth.getPrincipal();
         User user = userRepository.findById(userId.intValue())
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
-        
+
         return Map.of(
             "id", user.getId(),
+            "name", user.getName(),
             "email", user.getEmail(),
-            "language", user.getLanguage() != null ? user.getLanguage() : "pt-BR"
+            "language", user.getLanguage() != null ? user.getLanguage() : "pt-BR",
+            "onboardingCompleted", user.getOnboardingCompleted() != null && user.getOnboardingCompleted()
         );
+    }
+
+    @PutMapping("/onboarding-complete")
+    public ResponseEntity<Void> completeOnboarding(Authentication auth) {
+        Number userId = (Number) auth.getPrincipal();
+        User user = userRepository.findById(userId.intValue())
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
+        user.setOnboardingCompleted(true);
+        userRepository.save(user);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/name")
+    public ResponseEntity<Void> updateName(@RequestBody Map<String, String> body, Authentication auth) {
+        String name = body.get("name");
+        if (name == null || name.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        Number userId = (Number) auth.getPrincipal();
+        User user = userRepository.findById(userId.intValue())
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.user.not_found")));
+        user.setName(name.strip());
+        userRepository.save(user);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/language")

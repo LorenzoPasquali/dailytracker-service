@@ -9,5 +9,6 @@ public record TaskRequest(
         @NotBlank String status,
         String priority,
         Integer projectId,
-        Integer taskTypeId
+        Integer taskTypeId,
+        Integer assigneeId
 ) {}

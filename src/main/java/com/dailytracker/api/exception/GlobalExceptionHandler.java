@@ -32,6 +32,12 @@ public class GlobalExceptionHandler {
                 .body(Map.of("message", ex.getMessage()));
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, String>> handleForbidden(ForbiddenException ex) {
+        return ResponseEntity.status(403)
+                .body(Map.of("message", ex.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
