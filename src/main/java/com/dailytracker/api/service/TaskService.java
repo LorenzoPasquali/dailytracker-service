@@ -14,6 +14,7 @@ import com.dailytracker.api.repository.TaskRepository;
 import com.dailytracker.api.repository.TaskTypeRepository;
 import com.dailytracker.api.repository.UserRepository;
 import com.dailytracker.api.repository.WorkspaceRepository;
+import org.springframework.context.annotation.Lazy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,8 @@ public class TaskService {
     private final WorkspaceService workspaceService;
     private final WorkspaceEventPublisher eventPublisher;
     private final MessageService messageService;
+    @Lazy
+    private final NotificationScheduleService notificationScheduleService;
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> findAllByWorkspace(Integer workspaceId, Integer userId) {
@@ -63,6 +66,7 @@ public class TaskService {
                 .status(request.status())
                 .priority(priority)
                 .position(position)
+                .dueDate(request.dueDate())
                 .user(user)
                 .workspace(workspace)
                 .build();
@@ -85,6 +89,9 @@ public class TaskService {
         }
 
         task = taskRepository.saveAndFlush(task);
+        if (task.getDueDate() != null) {
+            notificationScheduleService.recomputeForTask(task);
+        }
         Map<String, Object> response = toResponse(task);
         eventPublisher.publishTaskEvent(workspaceId, "TASK_CREATED", response);
         return response;
@@ -124,6 +131,9 @@ public class TaskService {
         if (request.createdAt() != null) {
             task.setCreatedAt(request.createdAt());
         }
+        if (request.dueDate() != null || (request.title() != null && task.getDueDate() != null)) {
+            task.setDueDate(request.dueDate());
+        }
         // Only update assignee on full form edits (title present). Partial updates (e.g. drag-and-drop)
         // do not include title, so they leave assignee unchanged.
         if (request.title() != null) {
@@ -134,6 +144,7 @@ public class TaskService {
         }
 
         task = taskRepository.saveAndFlush(task);
+        notificationScheduleService.recomputeForTask(task);
         Map<String, Object> response = toResponse(task);
         eventPublisher.publishTaskEvent(workspaceId, "TASK_UPDATED", response);
         return response;
@@ -190,6 +201,7 @@ public class TaskService {
         map.put("workspaceId", task.getWorkspace().getId());
         map.put("assigneeId", task.getAssignee() != null ? task.getAssignee().getId() : null);
         map.put("assigneeName", task.getAssignee() != null ? task.getAssignee().getName() : messageService.get("task.unassigned"));
+        map.put("dueDate", task.getDueDate() != null ? task.getDueDate().toString() : null);
         return map;
     }
 }

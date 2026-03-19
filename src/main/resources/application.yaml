@@ -48,6 +48,15 @@ spring:
     validate-on-migrate: false
     locations: classpath:db/migration
 
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
 app:
   jwt:
     secret: ${JWT_SECRET}
@@ -55,3 +64,7 @@ app:
     refresh-expiration: 2592000000 # 30 days
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   aes-secret: ${AES_SECRET}
+  notifications:
+    from-email: ${NOTIFICATIONS_FROM_EMAIL:noreply@dailytracker.app}
+    from-name: ${NOTIFICATIONS_FROM_NAME:DailyTracker}
+    enabled: ${NOTIFICATIONS_ENABLED:true}

@@ -73,6 +73,9 @@ public class Task {
     @JoinColumn(name = "\"assigneeId\"")
     private User assignee;
 
+    @Column(name = "\"dueDate\"")
+    private Instant dueDate;
+
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();

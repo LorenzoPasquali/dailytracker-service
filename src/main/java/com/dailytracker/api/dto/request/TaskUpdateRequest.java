@@ -11,5 +11,6 @@ public record TaskUpdateRequest(
         Integer projectId,
         Integer taskTypeId,
         Instant createdAt,
-        Integer assigneeId
+        Integer assigneeId,
+        Instant dueDate
 ) {}

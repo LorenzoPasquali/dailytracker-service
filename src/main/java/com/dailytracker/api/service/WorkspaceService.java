@@ -245,6 +245,10 @@ public class WorkspaceService {
         }
     }
 
+    public void assertCreator(Integer workspaceId, Integer userId) {
+        assertCreator(getWorkspaceOrThrow(workspaceId), userId);
+    }
+
     private void assertCreator(Workspace workspace, Integer userId) {
         assertMember(workspace.getId(), userId);
         if (!workspace.getCreatorId().equals(userId)) {
