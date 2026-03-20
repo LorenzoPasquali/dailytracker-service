@@ -2,6 +2,8 @@ server:
   port: ${PORT:3000}
 
 spring:
+  config:
+    import: "optional:file:.env[.properties]"
   application:
     name: dailytracker-service
 

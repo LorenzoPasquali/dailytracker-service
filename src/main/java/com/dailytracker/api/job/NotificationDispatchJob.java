@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -21,7 +20,6 @@ public class NotificationDispatchJob {
     private final EmailService emailService;
 
     @Scheduled(fixedDelay = 60_000)
-    @Transactional
     public void dispatch() {
         Instant now = Instant.now();
         List<NotificationSchedule> due = scheduleRepository.findPendingDue(now);
@@ -29,7 +27,7 @@ public class NotificationDispatchJob {
             log.info("Dispatching {} pending notification(s)", due.size());
         }
         for (NotificationSchedule schedule : due) {
-            emailService.sendDueDateNotification(schedule, schedule.getTask());
+            emailService.sendDueDateNotification(schedule.getId());
         }
     }
 }

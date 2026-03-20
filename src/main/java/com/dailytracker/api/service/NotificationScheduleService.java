@@ -31,14 +31,16 @@ public class NotificationScheduleService {
             return;
         }
 
-        List<NotificationRule> rules = ruleRepository.findActiveRulesForTask(
-                task.getWorkspaceId(), task.getProjectId());
+        Integer workspaceId = task.getWorkspace().getId();
+        Integer projectId = task.getProject() != null ? task.getProject().getId() : null;
+
+        List<NotificationRule> rules = ruleRepository.findActiveRulesForTask(workspaceId, projectId);
 
         Instant now = Instant.now();
         for (NotificationRule rule : rules) {
             for (var offset : rule.getOffsets()) {
                 Instant scheduledAt = task.getDueDate().minusSeconds((long) offset.getMinutes() * 60);
-                if (scheduledAt.isAfter(now)) {
+                if (!scheduledAt.isBefore(now)) {
                     for (var recipient : rule.getRecipients()) {
                         scheduleRepository.save(NotificationSchedule.builder()
                                 .task(task)
@@ -64,14 +66,17 @@ public class NotificationScheduleService {
         }
 
         Instant now = Instant.now();
-        List<Task> tasks = rule.getProjectId() != null
-                ? taskRepository.findByWorkspaceIdAndProjectIdAndDueDateIsNotNull(rule.getWorkspaceId(), rule.getProjectId())
-                : taskRepository.findByWorkspaceIdAndDueDateIsNotNull(rule.getWorkspaceId());
+        Integer workspaceId = rule.getWorkspace().getId();
+        Integer projectId = rule.getProject() != null ? rule.getProject().getId() : null;
+
+        List<Task> tasks = projectId != null
+                ? taskRepository.findByWorkspaceIdAndProjectIdAndDueDateIsNotNull(workspaceId, projectId)
+                : taskRepository.findByWorkspaceIdAndDueDateIsNotNull(workspaceId);
 
         for (Task task : tasks) {
             for (var offset : rule.getOffsets()) {
                 Instant scheduledAt = task.getDueDate().minusSeconds((long) offset.getMinutes() * 60);
-                if (scheduledAt.isAfter(now)) {
+                if (!scheduledAt.isBefore(now)) {
                     for (var recipient : rule.getRecipients()) {
                         scheduleRepository.save(NotificationSchedule.builder()
                                 .task(task)

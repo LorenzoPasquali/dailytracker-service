@@ -2,6 +2,7 @@ package com.dailytracker.api.service;
 
 import com.dailytracker.api.entity.NotificationSchedule;
 import com.dailytracker.api.entity.Task;
+import com.dailytracker.api.repository.NotificationScheduleRepository;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -22,6 +24,7 @@ import java.time.format.DateTimeFormatter;
 public class EmailService {
 
     private final JavaMailSender mailSender;
+    private final NotificationScheduleRepository scheduleRepository;
 
     @Value("${app.notifications.from-email}")
     private String fromEmail;
@@ -38,13 +41,19 @@ public class EmailService {
     private static final DateTimeFormatter DATE_FMT =
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.of("UTC"));
 
-    @Transactional
-    public void sendDueDateNotification(NotificationSchedule schedule, Task task) {
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void sendDueDateNotification(Integer scheduleId) {
         if (!notificationsEnabled) {
-            log.debug("Notifications disabled — skipping schedule id={}", schedule.getId());
+            log.debug("Notifications disabled — skipping schedule id={}", scheduleId);
             return;
         }
 
+        NotificationSchedule schedule = scheduleRepository.findById(scheduleId).orElse(null);
+        if (schedule == null || !"PENDING".equals(schedule.getStatus())) {
+            return;
+        }
+
+        Task task = schedule.getTask();
         try {
             String html = buildEmailHtml(task, schedule);
             MimeMessage message = mailSender.createMimeMessage();
@@ -57,6 +66,7 @@ public class EmailService {
 
             schedule.setStatus("SENT");
             schedule.setSentAt(Instant.now());
+            scheduleRepository.save(schedule);
             log.info("Notification sent: scheduleId={} to={}", schedule.getId(), schedule.getRecipientEmail());
 
         } catch (Exception ex) {
@@ -71,6 +81,7 @@ public class EmailService {
             } else {
                 schedule.setNextRetryAt(Instant.now().plusSeconds(60));
             }
+            scheduleRepository.save(schedule);
         }
     }
 
@@ -97,7 +108,7 @@ public class EmailService {
                 + "<table width='100%' cellpadding='0' cellspacing='0' style='background:#f9fafb;padding:32px 0;'>"
                 + "<tr><td align='center'>"
                 + "<table width='600' cellpadding='0' cellspacing='0' style='background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);'>"
-                + "<tr><td style='background:#4f46e5;padding:24px 32px;'>"
+                + "<tr><td style='background:#10b981;padding:24px 32px;'>"
                 + "<span style='color:#ffffff;font-size:20px;font-weight:700;'>DailyTracker</span>"
                 + "</td></tr>"
                 + "<tr><td style='padding:32px;'>"
@@ -112,7 +123,7 @@ public class EmailService {
                 + "<td style='padding:4px 0;font-size:14px;font-weight:600;color:#dc2626;'>" + dueDateFormatted + " UTC</td></tr>"
                 + "</table>"
                 + "</div>"
-                + "<a href='" + taskLink + "' style='display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-size:14px;font-weight:600;'>Ver tarefa</a>"
+                + "<a href='" + taskLink + "' style='display:inline-block;background:#10b981;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-size:14px;font-weight:600;'>Ver tarefa</a>"
                 + "</td></tr>"
                 + "<tr><td style='padding:16px 32px;background:#f3f4f6;'>"
                 + "<p style='margin:0;color:#9ca3af;font-size:12px;'>Você recebeu este email porque existe uma regra de notificação configurada no workspace <em>" + escapeHtml(workspaceName) + "</em>.</p>"
