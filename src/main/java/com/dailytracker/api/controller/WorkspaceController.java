@@ -64,9 +64,9 @@ public class WorkspaceController {
     }
 
     @PostMapping("/invite/{token}/accept")
-    public ResponseEntity<Void> acceptInvite(@PathVariable String token, Authentication auth) {
-        workspaceService.acceptInvite(token, userId(auth));
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<Map<String, Object>> acceptInvite(@PathVariable String token, Authentication auth) {
+        Integer workspaceId = workspaceService.acceptInvite(token, userId(auth));
+        return ResponseEntity.ok(Map.of("workspaceId", workspaceId));
     }
 
     // ── Members ───────────────────────────────────────────────────────────────

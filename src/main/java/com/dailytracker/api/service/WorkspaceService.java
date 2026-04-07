@@ -169,7 +169,7 @@ public class WorkspaceService {
     }
 
     @Transactional
-    public void acceptInvite(String token, Integer userId) {
+    public Integer acceptInvite(String token, Integer userId) {
         var invite = inviteRepository.findByToken(token)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         messageService.get("error.workspace.invite.not_found")));
@@ -196,6 +196,8 @@ public class WorkspaceService {
         memberRepository.save(member);
         eventPublisher.publishMemberEvent(workspaceId, "MEMBER_JOINED",
                 Map.of("userId", userId, "name", user.getName(), "email", user.getEmail()));
+
+        return workspaceId;
     }
 
     // ── Members ───────────────────────────────────────────────────────────────
