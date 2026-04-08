@@ -40,6 +40,9 @@ public interface TaskRepository extends JpaRepository<Task, Integer> {
 
     Optional<Task> findByIdAndWorkspaceId(Integer id, Integer workspaceId);
 
+    @Query("SELECT t FROM Task t LEFT JOIN FETCH t.user LEFT JOIN FETCH t.assignee WHERE t.id = :id AND t.workspaceId = :workspaceId")
+    Optional<Task> findByIdAndWorkspaceIdWithUsers(@Param("id") Integer id, @Param("workspaceId") Integer workspaceId);
+
     @Query("SELECT MIN(t.position) FROM Task t WHERE t.userId = :userId AND t.status = :status AND t.position IS NOT NULL")
     Optional<Integer> findMinPositionByUserIdAndStatus(@Param("userId") Integer userId, @Param("status") String status);
 

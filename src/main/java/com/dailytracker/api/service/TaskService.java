@@ -101,7 +101,7 @@ public class TaskService {
     public Map<String, Object> update(Integer id, TaskUpdateRequest request, Integer userId, Integer workspaceId) {
         workspaceService.assertMember(workspaceId, userId);
 
-        Task task = taskRepository.findByIdAndWorkspaceId(id, workspaceId)
+        Task task = taskRepository.findByIdAndWorkspaceIdWithUsers(id, workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.task.not_found")));
 
         if (request.title() != null && !request.title().isBlank()) {
