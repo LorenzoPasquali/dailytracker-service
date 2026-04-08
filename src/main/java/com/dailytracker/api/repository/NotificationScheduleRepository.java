@@ -11,11 +11,11 @@ import java.util.List;
 
 public interface NotificationScheduleRepository extends JpaRepository<NotificationSchedule, Integer> {
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("DELETE FROM NotificationSchedule s WHERE s.taskId = :taskId AND s.status = 'PENDING'")
     void deletePendingByTaskId(@Param("taskId") Integer taskId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("DELETE FROM NotificationSchedule s WHERE s.ruleId = :ruleId AND s.status = 'PENDING'")
     void deletePendingByRuleId(@Param("ruleId") Integer ruleId);
 

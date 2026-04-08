@@ -93,11 +93,16 @@ public class NotificationRuleService {
             rule.setProject(null);
         }
 
+        // Flush deletes first to avoid UNIQUE constraint violations (Hibernate's default
+        // action order is INSERT → DELETE, so clearing + re-adding the same values in
+        // one flush causes constraint errors).
         rule.getRecipients().clear();
+        rule.getOffsets().clear();
+        ruleRepository.saveAndFlush(rule);
+
         for (String email : request.emails()) {
             rule.getRecipients().add(NotificationRecipient.builder().rule(rule).email(email.trim().toLowerCase()).build());
         }
-        rule.getOffsets().clear();
         for (Integer minutes : request.offsets()) {
             rule.getOffsets().add(NotificationOffset.builder().rule(rule).minutes(minutes).build());
         }
