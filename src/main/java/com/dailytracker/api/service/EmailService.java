@@ -3,13 +3,12 @@ package com.dailytracker.api.service;
 import com.dailytracker.api.entity.NotificationSchedule;
 import com.dailytracker.api.entity.Task;
 import com.dailytracker.api.repository.NotificationScheduleRepository;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
-import lombok.RequiredArgsConstructor;
+import com.resend.Resend;
+import com.resend.core.exception.ResendException;
+import com.resend.services.emails.model.CreateEmailOptions;
+import com.resend.services.emails.model.CreateEmailResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,10 +19,9 @@ import java.time.format.DateTimeFormatter;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class EmailService {
 
-    private final JavaMailSender mailSender;
+    private final Resend resend;
     private final NotificationScheduleRepository scheduleRepository;
 
     @Value("${app.notifications.from-email}")
@@ -41,6 +39,13 @@ public class EmailService {
     private static final DateTimeFormatter DATE_FMT =
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.of("UTC"));
 
+    public EmailService(
+            NotificationScheduleRepository scheduleRepository,
+            @Value("${app.notifications.resend-api-key}") String resendApiKey) {
+        this.scheduleRepository = scheduleRepository;
+        this.resend = new Resend(resendApiKey);
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void sendDueDateNotification(Integer scheduleId) {
         if (!notificationsEnabled) {
@@ -56,20 +61,23 @@ public class EmailService {
         Task task = schedule.getTask();
         try {
             String html = buildEmailHtml(task, schedule);
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(fromEmail, fromName);
-            helper.setTo(schedule.getRecipientEmail());
-            helper.setSubject("[DailyTracker] Prazo da tarefa: " + task.getTitle());
-            helper.setText(html, true);
-            mailSender.send(message);
+
+            CreateEmailOptions params = CreateEmailOptions.builder()
+                    .from(fromName + " <" + fromEmail + ">")
+                    .to(schedule.getRecipientEmail())
+                    .subject("[DailyTracker] Prazo da tarefa: " + task.getTitle())
+                    .html(html)
+                    .build();
+
+            CreateEmailResponse response = resend.emails().send(params);
+            log.info("Notification sent via Resend: emailId={}, scheduleId={}, to={}",
+                    response.getId(), schedule.getId(), schedule.getRecipientEmail());
 
             schedule.setStatus("SENT");
             schedule.setSentAt(Instant.now());
             scheduleRepository.save(schedule);
-            log.info("Notification sent: scheduleId={} to={}", schedule.getId(), schedule.getRecipientEmail());
 
-        } catch (Exception ex) {
+        } catch (ResendException ex) {
             log.error("Failed to send notification scheduleId={}: {}", schedule.getId(), ex.getMessage());
             int retries = schedule.getRetryCount() + 1;
             schedule.setRetryCount(retries);
