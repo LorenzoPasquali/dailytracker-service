@@ -4,6 +4,7 @@ import com.dailytracker.api.dto.request.LoginRequest;
 import com.dailytracker.api.dto.request.RegisterRequest;
 import com.dailytracker.api.dto.request.TokenRefreshRequest;
 import com.dailytracker.api.dto.response.AuthResponse;
+import com.dailytracker.api.security.AuthCodeStore;
 import com.dailytracker.api.service.AuthService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -20,6 +21,7 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final AuthCodeStore authCodeStore;
 
     @GetMapping("/google")
     public void googleLogin(HttpServletResponse response) throws IOException {
@@ -41,5 +43,18 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody TokenRefreshRequest request) {
         return ResponseEntity.ok(authService.refreshToken(request.refreshToken()));
+    }
+
+    @PostMapping("/exchange-code")
+    public ResponseEntity<AuthResponse> exchangeCode(@RequestBody Map<String, String> request) {
+        String code = request.get("code");
+        if (code == null || code.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        String[] tokens = authCodeStore.consumeCode(code);
+        if (tokens == null) {
+            return ResponseEntity.status(401).build();
+        }
+        return ResponseEntity.ok(new AuthResponse(tokens[0], tokens[1]));
     }
 }

@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.net.URLEncoder;
 
 @Component
 @RequiredArgsConstructor
@@ -26,6 +26,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     private final JwtService jwtService;
     private final AuthService authService;
     private final WorkspaceService workspaceService;
+    private final AuthCodeStore authCodeStore;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
@@ -67,17 +68,11 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         String token = jwtService.generateToken(user.getId());
         RefreshToken refreshToken = authService.createRefreshToken(user);
 
-        // Replicate the Node.js popup flow: postMessage to opener, fallback to redirect
-        response.setContentType("text/html");
-        PrintWriter writer = response.getWriter();
-        writer.write("<!DOCTYPE html><html><body><script>"
-                + "if (window.opener) {"
-                + "  window.opener.postMessage({ token: '" + token + "', refreshToken: '" + refreshToken.getToken() + "' }, '" + frontendUrl + "');"
-                + "  window.close();"
-                + "} else {"
-                + "  window.location.href = '" + frontendUrl + "/login/success?token=" + token + "&refreshToken=" + refreshToken.getToken() + "';"
-                + "}"
-                + "</script></body></html>");
-        writer.flush();
+        String code = authCodeStore.storeTokens(token, refreshToken.getToken());
+        String encodedCode = URLEncoder.encode(code, java.nio.charset.StandardCharsets.UTF_8);
+
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Pragma", "no-cache");
+        response.sendRedirect(frontendUrl + "/login/success?code=" + encodedCode);
     }
 }
