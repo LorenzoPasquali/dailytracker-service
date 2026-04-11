@@ -37,7 +37,7 @@ public class SecurityConfig {
                     "/auth/refresh",
                     "/auth/google",
                     "/auth/google/callback",
-                    "/auth/exchange-code",
+                    "/auth/consume-cookies",
                     "/oauth2/**",
                     "/healthz",
                     "/ws/**",

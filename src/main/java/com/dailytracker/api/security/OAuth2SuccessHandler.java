@@ -5,10 +5,13 @@ import com.dailytracker.api.entity.User;
 import com.dailytracker.api.repository.UserRepository;
 import com.dailytracker.api.service.AuthService;
 import com.dailytracker.api.service.WorkspaceService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
@@ -16,7 +19,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
-import java.net.URLEncoder;
+import java.io.PrintWriter;
 
 @Component
 @RequiredArgsConstructor
@@ -26,7 +29,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     private final JwtService jwtService;
     private final AuthService authService;
     private final WorkspaceService workspaceService;
-    private final AuthCodeStore authCodeStore;
+    private final ObjectMapper objectMapper;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
@@ -68,11 +71,63 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         String token = jwtService.generateToken(user.getId());
         RefreshToken refreshToken = authService.createRefreshToken(user);
 
-        String code = authCodeStore.storeTokens(token, refreshToken.getToken());
-        String encodedCode = URLEncoder.encode(code, java.nio.charset.StandardCharsets.UTF_8);
+        Boolean isPopup = (Boolean) request.getSession().getAttribute("oauth_popup");
+        request.getSession().removeAttribute("oauth_popup");
 
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Pragma", "no-cache");
-        response.sendRedirect(frontendUrl + "/login/success?code=" + encodedCode);
+
+        if (Boolean.TRUE.equals(isPopup)) {
+            sendPopupResponse(response, token, refreshToken.getToken());
+        } else {
+            sendCookieRedirect(response, token, refreshToken.getToken());
+        }
+    }
+
+    private void sendPopupResponse(HttpServletResponse response, String token, String refreshToken) throws IOException {
+        String safeToken = objectMapper.writeValueAsString(token);
+        String safeRefreshToken = objectMapper.writeValueAsString(refreshToken);
+        String safeFrontendUrl = objectMapper.writeValueAsString(frontendUrl);
+
+        response.setContentType("text/html;charset=UTF-8");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+
+        PrintWriter writer = response.getWriter();
+        writer.write("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body><script>"
+                + "(function(){"
+                + "var t=" + safeToken + ";"
+                + "var r=" + safeRefreshToken + ";"
+                + "var u=" + safeFrontendUrl + ";"
+                + "if(window.opener){"
+                + "window.opener.postMessage({token:t,refreshToken:r},u);"
+                + "window.close();"
+                + "}else{"
+                + "window.location.href=u+'/login/success';"
+                + "}"
+                + "})();"
+                + "</script></body></html>");
+        writer.flush();
+    }
+
+    private void sendCookieRedirect(HttpServletResponse response, String token, String refreshToken) throws IOException {
+        ResponseCookie tokenCookie = ResponseCookie.from("auth_token", token)
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(60)
+                .sameSite("Lax")
+                .build();
+
+        ResponseCookie refreshCookie = ResponseCookie.from("auth_refresh_token", refreshToken)
+                .httpOnly(true)
+                .secure(true)
+                .path("/")
+                .maxAge(60)
+                .sameSite("Lax")
+                .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, tokenCookie.toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
+        response.sendRedirect(frontendUrl + "/login/success");
     }
 }

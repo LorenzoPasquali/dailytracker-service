@@ -4,11 +4,14 @@ import com.dailytracker.api.dto.request.LoginRequest;
 import com.dailytracker.api.dto.request.RegisterRequest;
 import com.dailytracker.api.dto.request.TokenRefreshRequest;
 import com.dailytracker.api.dto.response.AuthResponse;
-import com.dailytracker.api.security.AuthCodeStore;
 import com.dailytracker.api.service.AuthService;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,10 +24,13 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
-    private final AuthCodeStore authCodeStore;
 
     @GetMapping("/google")
-    public void googleLogin(HttpServletResponse response) throws IOException {
+    public void googleLogin(HttpServletRequest request, HttpServletResponse response,
+                            @RequestParam(required = false) String popup) throws IOException {
+        if ("true".equals(popup)) {
+            request.getSession().setAttribute("oauth_popup", true);
+        }
         response.sendRedirect("/oauth2/authorization/google");
     }
 
@@ -45,16 +51,33 @@ public class AuthController {
         return ResponseEntity.ok(authService.refreshToken(request.refreshToken()));
     }
 
-    @PostMapping("/exchange-code")
-    public ResponseEntity<AuthResponse> exchangeCode(@RequestBody Map<String, String> request) {
-        String code = request.get("code");
-        if (code == null || code.isBlank()) {
-            return ResponseEntity.badRequest().build();
+    @PostMapping("/consume-cookies")
+    public ResponseEntity<AuthResponse> consumeCookies(HttpServletRequest request, HttpServletResponse response) {
+        String token = null;
+        String refreshToken = null;
+
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("auth_token".equals(cookie.getName())) {
+                    token = cookie.getValue();
+                } else if ("auth_refresh_token".equals(cookie.getName())) {
+                    refreshToken = cookie.getValue();
+                }
+            }
         }
-        String[] tokens = authCodeStore.consumeCode(code);
-        if (tokens == null) {
+
+        if (token == null) {
             return ResponseEntity.status(401).build();
         }
-        return ResponseEntity.ok(new AuthResponse(tokens[0], tokens[1]));
+
+        // Clear the cookies
+        ResponseCookie clearToken = ResponseCookie.from("auth_token", "")
+                .httpOnly(true).secure(true).path("/").maxAge(0).sameSite("Lax").build();
+        ResponseCookie clearRefresh = ResponseCookie.from("auth_refresh_token", "")
+                .httpOnly(true).secure(true).path("/").maxAge(0).sameSite("Lax").build();
+        response.addHeader(HttpHeaders.SET_COOKIE, clearToken.toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, clearRefresh.toString());
+
+        return ResponseEntity.ok(new AuthResponse(token, refreshToken));
     }
 }
