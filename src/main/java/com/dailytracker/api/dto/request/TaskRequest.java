@@ -7,7 +7,8 @@ import java.time.Instant;
 public record TaskRequest(
         @NotBlank @Size(max = 200) String title,
         @Size(max = 5000) String description,
-        @NotBlank String status,
+        String status,
+        Integer stageId,
         String priority,
         Integer projectId,
         Integer taskTypeId,

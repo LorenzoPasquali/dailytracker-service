@@ -30,6 +30,11 @@ public class WorkspaceEventPublisher {
         publish(workspaceId, eventType, payload);
     }
 
+    public void publishStageEvent(Integer workspaceId, String eventType, Map<String, Object> payload) {
+        if (!isSharedWorkspace(workspaceId)) return;
+        publish(workspaceId, eventType, payload);
+    }
+
     public void publishMemberEvent(Integer workspaceId, String eventType, Map<String, Object> payload) {
         if (!isSharedWorkspace(workspaceId)) return;
         publish(workspaceId, eventType, payload);

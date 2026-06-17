@@ -55,6 +55,14 @@ public interface TaskRepository extends JpaRepository<Task, Integer> {
     @Query("SELECT MAX(t.position) FROM Task t WHERE t.workspaceId = :workspaceId AND t.status = :status AND t.position IS NOT NULL")
     Optional<Integer> findMaxPositionByWorkspaceIdAndStatus(@Param("workspaceId") Integer workspaceId, @Param("status") String status);
 
+    @Query("SELECT MIN(t.position) FROM Task t WHERE t.workspaceId = :workspaceId AND t.stageId = :stageId AND t.position IS NOT NULL")
+    Optional<Integer> findMinPositionByWorkspaceIdAndStageId(@Param("workspaceId") Integer workspaceId, @Param("stageId") Integer stageId);
+
+    @Query("SELECT MAX(t.position) FROM Task t WHERE t.workspaceId = :workspaceId AND t.stageId = :stageId AND t.position IS NOT NULL")
+    Optional<Integer> findMaxPositionByWorkspaceIdAndStageId(@Param("workspaceId") Integer workspaceId, @Param("stageId") Integer stageId);
+
+    List<Task> findByStageId(Integer stageId);
+
     List<Task> findByWorkspaceIdAndDueDateIsNotNull(Integer workspaceId);
 
     List<Task> findByWorkspaceIdAndProjectIdAndDueDateIsNotNull(Integer workspaceId, Integer projectId);

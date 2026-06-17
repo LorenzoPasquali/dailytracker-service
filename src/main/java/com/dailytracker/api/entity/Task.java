@@ -23,7 +23,6 @@ public class Task {
 
     private String description;
 
-    @Column(nullable = false)
     private String status;
 
     @Column(nullable = false)
@@ -58,6 +57,13 @@ public class Task {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "\"taskTypeId\"")
     private TaskType taskType;
+
+    @Column(name = "\"stageId\"", insertable = false, updatable = false)
+    private Integer stageId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "\"stageId\"")
+    private Stage stage;
 
     @Column(name = "\"workspaceId\"", nullable = false, insertable = false, updatable = false)
     private Integer workspaceId;

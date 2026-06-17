@@ -1,5 +1,6 @@
 package com.dailytracker.api.service;
 
+import com.dailytracker.api.entity.Stage;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.entity.Workspace;
 import com.dailytracker.api.entity.WorkspaceInvite;
@@ -8,6 +9,7 @@ import com.dailytracker.api.exception.BadRequestException;
 import com.dailytracker.api.exception.ForbiddenException;
 import com.dailytracker.api.exception.ResourceNotFoundException;
 import com.dailytracker.api.i18n.MessageService;
+import com.dailytracker.api.repository.StageRepository;
 import com.dailytracker.api.repository.UserRepository;
 import com.dailytracker.api.repository.WorkspaceInviteRepository;
 import com.dailytracker.api.repository.WorkspaceMemberRepository;
@@ -32,6 +34,7 @@ public class WorkspaceService {
     private final WorkspaceMemberRepository memberRepository;
     private final WorkspaceInviteRepository inviteRepository;
     private final UserRepository userRepository;
+    private final StageRepository stageRepository;
     private final WorkspaceEventPublisher eventPublisher;
     private final MessageService messageService;
 
@@ -73,6 +76,8 @@ public class WorkspaceService {
                 .role("CREATOR")
                 .build();
         memberRepository.save(member);
+
+        seedDefaultStages(workspace);
     }
 
     @Transactional
@@ -94,6 +99,8 @@ public class WorkspaceService {
                 .role("CREATOR")
                 .build();
         memberRepository.save(member);
+
+        seedDefaultStages(workspace);
 
         Map<String, Object> response = toResponse(workspace, userId);
         eventPublisher.publishWorkspaceEvent(workspace.getId(), "WORKSPACE_CREATED", response);
@@ -237,6 +244,17 @@ public class WorkspaceService {
         memberRepository.deleteByWorkspaceIdAndUserId(workspaceId, targetUserId);
         eventPublisher.publishMemberEvent(workspaceId, "MEMBER_LEFT",
                 Map.of("userId", targetUserId));
+    }
+
+    // ── Stages ────────────────────────────────────────────────────────────────
+
+    private void seedDefaultStages(Workspace workspace) {
+        stageRepository.save(Stage.builder()
+                .name("Planejado").color("#a1a1aa").position(0).isFinal(false).workspace(workspace).build());
+        stageRepository.save(Stage.builder()
+                .name("Em Progresso").color("#f59e0b").position(1).isFinal(false).workspace(workspace).build());
+        stageRepository.save(Stage.builder()
+                .name("Feito").color("#10b981").position(2).isFinal(true).workspace(workspace).build());
     }
 
     // ── Authorization helpers ─────────────────────────────────────────────────

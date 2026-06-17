@@ -3,6 +3,7 @@ package com.dailytracker.api.service;
 import com.dailytracker.api.dto.request.TaskRequest;
 import com.dailytracker.api.dto.request.TaskUpdateRequest;
 import com.dailytracker.api.entity.Project;
+import com.dailytracker.api.entity.Stage;
 import com.dailytracker.api.entity.Task;
 import com.dailytracker.api.entity.TaskType;
 import com.dailytracker.api.entity.User;
@@ -10,6 +11,7 @@ import com.dailytracker.api.entity.Workspace;
 import com.dailytracker.api.exception.ResourceNotFoundException;
 import com.dailytracker.api.i18n.MessageService;
 import com.dailytracker.api.repository.ProjectRepository;
+import com.dailytracker.api.repository.StageRepository;
 import com.dailytracker.api.repository.TaskRepository;
 import com.dailytracker.api.repository.TaskTypeRepository;
 import com.dailytracker.api.repository.UserRepository;
@@ -31,6 +33,7 @@ public class TaskService {
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final TaskTypeRepository taskTypeRepository;
+    private final StageRepository stageRepository;
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceService workspaceService;
     private final WorkspaceEventPublisher eventPublisher;
@@ -57,13 +60,16 @@ public class TaskService {
         Workspace workspace = workspaceRepository.findById(workspaceId)
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.workspace.not_found")));
 
+        Stage stage = resolveStageOrDefault(request.stageId(), workspaceId);
+
         String priority = request.priority() != null ? request.priority() : "MEDIUM";
-        Integer position = resolvePositionForNewTask(workspaceId, request.status(), priority);
+        Integer position = resolvePositionForNewTask(workspaceId, stage, priority);
 
         Task task = Task.builder()
                 .title(request.title())
                 .description(request.description())
-                .status(request.status())
+                .status(stage.getName())
+                .stage(stage)
                 .priority(priority)
                 .position(position)
                 .dueDate(request.dueDate())
@@ -110,8 +116,11 @@ public class TaskService {
         if (request.description() != null) {
             task.setDescription(request.description());
         }
-        if (request.status() != null && !request.status().equals(task.getStatus())) {
-            task.setStatus(request.status());
+        if (request.stageId() != null && !request.stageId().equals(task.getStageId())) {
+            Stage stage = stageRepository.findByIdAndWorkspaceId(request.stageId(), workspaceId)
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.stage.not_found")));
+            task.setStage(stage);
+            task.setStatus(stage.getName());
             task.setPosition(null);
         }
         if (request.priority() != null && !request.priority().equals(task.getPriority())) {
@@ -173,13 +182,28 @@ public class TaskService {
         eventPublisher.publishTaskEvent(workspaceId, "TASK_DELETED", Map.of("id", id, "userId", userId));
     }
 
-    private Integer resolvePositionForNewTask(Integer workspaceId, String status, String priority) {
-        if ("LOW".equals(priority) && "PLANNED".equals(status)) {
-            return taskRepository.findMaxPositionByWorkspaceIdAndStatus(workspaceId, status)
+    private Stage resolveStageOrDefault(Integer stageId, Integer workspaceId) {
+        if (stageId != null) {
+            return stageRepository.findByIdAndWorkspaceId(stageId, workspaceId)
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.stage.not_found")));
+        }
+        return stageRepository.findByWorkspaceIdOrderByPositionAsc(workspaceId).stream()
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.get("error.stage.not_found")));
+    }
+
+    private Integer resolvePositionForNewTask(Integer workspaceId, Stage stage, String priority) {
+        boolean isFirstStage = stageRepository.findByWorkspaceIdOrderByPositionAsc(workspaceId).stream()
+                .findFirst()
+                .map(first -> first.getId().equals(stage.getId()))
+                .orElse(true);
+        // LOW priority tasks in the first stage drop to the bottom; everything else goes to the top.
+        if ("LOW".equals(priority) && isFirstStage) {
+            return taskRepository.findMaxPositionByWorkspaceIdAndStageId(workspaceId, stage.getId())
                     .map(max -> max + 10)
                     .orElse(10);
         } else {
-            return taskRepository.findMinPositionByWorkspaceIdAndStatus(workspaceId, status)
+            return taskRepository.findMinPositionByWorkspaceIdAndStageId(workspaceId, stage.getId())
                     .map(min -> min - 10)
                     .orElse(-10);
         }
@@ -198,6 +222,18 @@ public class TaskService {
         map.put("reporterName", task.getUser().getName());
         map.put("projectId", task.getProject() != null ? task.getProject().getId() : null);
         map.put("taskTypeId", task.getTaskType() != null ? task.getTaskType().getId() : null);
+        map.put("stageId", task.getStage() != null ? task.getStage().getId() : null);
+        if (task.getStage() != null) {
+            Stage s = task.getStage();
+            Map<String, Object> stageMap = new LinkedHashMap<>();
+            stageMap.put("id", s.getId());
+            stageMap.put("name", s.getName());
+            stageMap.put("color", s.getColor());
+            stageMap.put("isFinal", Boolean.TRUE.equals(s.getIsFinal()));
+            map.put("stage", stageMap);
+        } else {
+            map.put("stage", null);
+        }
         map.put("workspaceId", task.getWorkspace().getId());
         map.put("assigneeId", task.getAssignee() != null ? task.getAssignee().getId() : null);
         map.put("assigneeName", task.getAssignee() != null ? task.getAssignee().getName() : messageService.get("task.unassigned"));

@@ -2,12 +2,14 @@ package com.dailytracker.api.service;
 
 import com.dailytracker.api.dto.response.ChatResponse;
 import com.dailytracker.api.entity.Project;
+import com.dailytracker.api.entity.Stage;
 import com.dailytracker.api.entity.Task;
 import com.dailytracker.api.entity.TaskType;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.exception.BadRequestException;
 import com.dailytracker.api.i18n.MessageService;
 import com.dailytracker.api.repository.ProjectRepository;
+import com.dailytracker.api.repository.StageRepository;
 import com.dailytracker.api.repository.TaskRepository;
 import com.dailytracker.api.repository.TaskTypeRepository;
 import com.dailytracker.api.repository.UserRepository;
@@ -46,6 +48,7 @@ public class GeminiService {
     private final TaskRepository taskRepository;
     private final ProjectRepository projectRepository;
     private final TaskTypeRepository taskTypeRepository;
+    private final StageRepository stageRepository;
     private final UserRepository userRepository;
     private final MessageService messageService;
     private final ObjectMapper objectMapper;
@@ -59,7 +62,7 @@ public class GeminiService {
             List<Map<String, String>> history = new ArrayList<>(historyInput);
 
             List<Content> contents = buildContents(history);
-            GenerateContentConfig config = buildConfig(language);
+            GenerateContentConfig config = buildConfig(language, workspaceId);
 
             GenerateContentResponse response = client.models.generateContent(
                     MODEL_ID, contents, config);
@@ -186,18 +189,22 @@ public class GeminiService {
         return contents;
     }
 
-    private GenerateContentConfig buildConfig(String language) {
+    private GenerateContentConfig buildConfig(String language, Integer workspaceId) {
         Locale locale = LOCALE_MAP.getOrDefault(language, Locale.of("pt", "BR"));
         LocalDate today = LocalDate.now(ZONE_BR);
         String dateStr = today.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
         String dayOfWeek = today.getDayOfWeek().getDisplayName(TextStyle.FULL, locale);
-        String systemPrompt = messageService.get("ai.system_prompt", dateStr, dayOfWeek);
+
+        List<String> stageNames = stageNames(workspaceId);
+        String stageList = String.join(", ", stageNames);
+        String systemPrompt = messageService.get("ai.system_prompt", dateStr, dayOfWeek)
+                + "\n\n" + messageService.get("ai.stages_note", stageList);
 
         return GenerateContentConfig.builder()
                 .systemInstruction(Content.builder()
                         .parts(List.of(Part.builder().text(systemPrompt).build()))
                         .build())
-                .tools(List.of(buildTools()))
+                .tools(List.of(buildTools(stageNames)))
                 .automaticFunctionCalling(
                         AutomaticFunctionCallingConfig.builder()
                                 .disable(true)
@@ -205,7 +212,13 @@ public class GeminiService {
                 .build();
     }
 
-    private Tool buildTools() {
+    private List<String> stageNames(Integer workspaceId) {
+        return stageRepository.findByWorkspaceIdOrderByPositionAsc(workspaceId)
+                .stream().map(Stage::getName).toList();
+    }
+
+    private Tool buildTools(List<String> stageNames) {
+        String stageList = String.join(", ", stageNames);
         FunctionDeclaration getTasks = FunctionDeclaration.builder()
                 .name("get_tasks")
                 .description("Returns the user's tasks. Can filter by date and/or status. " +
@@ -227,8 +240,8 @@ public class GeminiService {
                                         .build(),
                                 "status", Schema.builder()
                                         .type("STRING")
-                                        .description("Filter by status: PLANNED, DOING or DONE.")
-                                        .enum_(List.of("PLANNED", "DOING", "DONE"))
+                                        .description("Filter by stage (column) name. Available stages: " + stageList + ".")
+                                        .enum_(stageNames)
                                         .build(),
                                 "project", Schema.builder()
                                         .type("STRING")
@@ -278,8 +291,8 @@ public class GeminiService {
                                         .build(),
                                 "status", Schema.builder()
                                         .type("STRING")
-                                        .description("Initial status of the task.")
-                                        .enum_(List.of("PLANNED", "DOING", "DONE"))
+                                        .description("Initial stage (column) name. Available stages: " + stageList + ".")
+                                        .enum_(stageNames)
                                         .build(),
                                 "projectName", Schema.builder()
                                         .type("STRING")
@@ -299,8 +312,8 @@ public class GeminiService {
     }
 
     private String translateStatus(String status, String language) {
-        if (status == null) return "?";
-        return messageService.get("ai.status." + status);
+        // status now holds the stage (column) name directly, already human-readable.
+        return status != null ? status : "?";
     }
 
     private Map<String, Object> executeTool(String functionName, Map<String, Object> args, Integer userId, Integer workspaceId, String language) {
@@ -400,7 +413,7 @@ public class GeminiService {
                 }
 
                 String description = args.get("description") != null ? args.get("description").toString() : null;
-                String status = args.get("status") != null ? args.get("status").toString() : "PLANNED";
+                String stageName = args.get("status") != null ? args.get("status").toString() : null;
                 String projectName = args.get("projectName") != null ? args.get("projectName").toString() : null;
                 String taskTypeName = args.get("taskTypeName") != null ? args.get("taskTypeName").toString() : null;
 
@@ -410,10 +423,19 @@ public class GeminiService {
                 var workspace = workspaceRepository.findById(workspaceId)
                         .orElseThrow(() -> new RuntimeException("Workspace not found"));
 
+                List<Stage> stages = stageRepository.findByWorkspaceIdOrderByPositionAsc(workspaceId);
+                if (stages.isEmpty()) {
+                    yield Map.of("error", messageService.get("error.stage.not_found"));
+                }
+                Stage stage = stageName != null
+                        ? stages.stream().filter(s -> s.getName().equalsIgnoreCase(stageName)).findFirst().orElse(stages.get(0))
+                        : stages.get(0);
+
                 Task task = Task.builder()
                         .title(title)
                         .description(description)
-                        .status(status)
+                        .status(stage.getName())
+                        .stage(stage)
                         .priority("MEDIUM")
                         .user(user)
                         .workspace(workspace)
