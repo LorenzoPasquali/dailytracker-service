@@ -1,5 +1,6 @@
 package com.dailytracker.api.config;
 
+import com.dailytracker.api.mcp.McpAuthFilter;
 import com.dailytracker.api.security.JwtAuthenticationFilter;
 import com.dailytracker.api.security.OAuth2SuccessHandler;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
+    private final McpAuthFilter mcpAuthFilter;
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
 
     @Bean
@@ -43,6 +45,8 @@ public class SecurityConfig {
                     "/ws/**",
                     "/api/workspaces/invite/*"
                 ).permitAll()
+                // /mcp/** is authenticated by McpAuthFilter (per-user MCP token), not JWT.
+                .requestMatchers("/mcp/**").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )
@@ -50,6 +54,7 @@ public class SecurityConfig {
                 .redirectionEndpoint(re -> re.baseUri("/auth/google/callback"))
                 .successHandler(oAuth2SuccessHandler)
             )
+            .addFilterBefore(mcpAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
