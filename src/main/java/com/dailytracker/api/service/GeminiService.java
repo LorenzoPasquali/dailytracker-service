@@ -1,19 +1,12 @@
 package com.dailytracker.api.service;
 
 import com.dailytracker.api.dto.response.ChatResponse;
-import com.dailytracker.api.entity.Project;
 import com.dailytracker.api.entity.Stage;
-import com.dailytracker.api.entity.Task;
-import com.dailytracker.api.entity.TaskType;
-import com.dailytracker.api.entity.User;
 import com.dailytracker.api.exception.BadRequestException;
 import com.dailytracker.api.i18n.MessageService;
-import com.dailytracker.api.repository.ProjectRepository;
+import com.dailytracker.api.mcp.GeminiToolBridge;
+import com.dailytracker.api.mcp.McpPrincipalContext;
 import com.dailytracker.api.repository.StageRepository;
-import com.dailytracker.api.repository.TaskRepository;
-import com.dailytracker.api.repository.TaskTypeRepository;
-import com.dailytracker.api.repository.UserRepository;
-import com.dailytracker.api.repository.WorkspaceRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import com.google.genai.types.*;
@@ -22,14 +15,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.*;
-import java.util.stream.Collectors;
 
+/**
+ * Drives the Gemini chat loop. Gemini remains the LLM, but its tools come from the shared MCP tool
+ * registry via {@link GeminiToolBridge} — the same tools an external client (Claude Desktop) sees.
+ * The acting user/workspace is published to {@link McpPrincipalContext} for the duration of the
+ * loop so tools resolve scope from the credential, never from model-supplied arguments.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -45,18 +42,14 @@ public class GeminiService {
             "es", Locale.of("es")
     );
 
-    private final TaskRepository taskRepository;
-    private final ProjectRepository projectRepository;
-    private final TaskTypeRepository taskTypeRepository;
     private final StageRepository stageRepository;
-    private final UserRepository userRepository;
     private final MessageService messageService;
     private final ObjectMapper objectMapper;
-
-    private final WorkspaceRepository workspaceRepository;
+    private final GeminiToolBridge geminiToolBridge;
 
     @Transactional
     public ChatResponse chat(String apiKey, List<Map<String, String>> historyInput, Integer userId, Integer workspaceId, String language) {
+        McpPrincipalContext.set(userId, workspaceId);
         try {
             Client client = Client.builder().apiKey(apiKey).build();
             List<Map<String, String>> history = new ArrayList<>(historyInput);
@@ -86,7 +79,7 @@ public class GeminiService {
                 for (FunctionCall fc : response.functionCalls()) {
                     String fnName = fc.name().orElse("");
                     Map<String, Object> fnArgs = fc.args().orElse(Map.of());
-                    Map<String, Object> result = executeTool(fnName, fnArgs, userId, workspaceId, language);
+                    Map<String, Object> result = geminiToolBridge.dispatch(fnName, fnArgs);
                     if ("create_task".equals(fnName) && Boolean.TRUE.equals(result.get("success"))) {
                         tasksCreatedInSession = true;
                     }
@@ -135,6 +128,8 @@ public class GeminiService {
                 throw new BadRequestException(messageService.get("error.gemini.key.invalid"));
             }
             throw new BadRequestException(messageService.get("error.gemini.api"));
+        } finally {
+            McpPrincipalContext.clear();
         }
     }
 
@@ -200,11 +195,15 @@ public class GeminiService {
         String systemPrompt = messageService.get("ai.system_prompt", dateStr, dayOfWeek)
                 + "\n\n" + messageService.get("ai.stages_note", stageList);
 
+        Tool tools = Tool.builder()
+                .functionDeclarations(geminiToolBridge.buildFunctionDeclarations(stageNames))
+                .build();
+
         return GenerateContentConfig.builder()
                 .systemInstruction(Content.builder()
                         .parts(List.of(Part.builder().text(systemPrompt).build()))
                         .build())
-                .tools(List.of(buildTools(stageNames)))
+                .tools(List.of(tools))
                 .automaticFunctionCalling(
                         AutomaticFunctionCallingConfig.builder()
                                 .disable(true)
@@ -215,266 +214,5 @@ public class GeminiService {
     private List<String> stageNames(Integer workspaceId) {
         return stageRepository.findByWorkspaceIdOrderByPositionAsc(workspaceId)
                 .stream().map(Stage::getName).toList();
-    }
-
-    private Tool buildTools(List<String> stageNames) {
-        String stageList = String.join(", ", stageNames);
-        FunctionDeclaration getTasks = FunctionDeclaration.builder()
-                .name("get_tasks")
-                .description("Returns the user's tasks. Can filter by date and/or status. " +
-                        "For daily summaries, use date filters to fetch tasks from specific days.")
-                .parameters(Schema.builder()
-                        .type("OBJECT")
-                        .properties(Map.of(
-                                "date", Schema.builder()
-                                        .type("STRING")
-                                        .description("Filter tasks for a specific date in YYYY-MM-DD format.")
-                                        .build(),
-                                "startDate", Schema.builder()
-                                        .type("STRING")
-                                        .description("Start date of the period in YYYY-MM-DD format. Use with endDate.")
-                                        .build(),
-                                "endDate", Schema.builder()
-                                        .type("STRING")
-                                        .description("End date of the period in YYYY-MM-DD format. Use with startDate.")
-                                        .build(),
-                                "status", Schema.builder()
-                                        .type("STRING")
-                                        .description("Filter by stage (column) name. Available stages: " + stageList + ".")
-                                        .enum_(stageNames)
-                                        .build(),
-                                "project", Schema.builder()
-                                        .type("STRING")
-                                        .description("Filter by project name.")
-                                        .build()
-                        ))
-                        .build())
-                .build();
-
-        FunctionDeclaration getProjects = FunctionDeclaration.builder()
-                .name("get_projects")
-                .description("Returns all user's projects with name and color.")
-                .parameters(Schema.builder()
-                        .type("OBJECT")
-                        .properties(Map.of())
-                        .build())
-                .build();
-
-        FunctionDeclaration getTaskTypes = FunctionDeclaration.builder()
-                .name("get_task_types")
-                .description("Returns the user's task types. If projectName is provided, returns only types for that project.")
-                .parameters(Schema.builder()
-                        .type("OBJECT")
-                        .properties(Map.of(
-                                "projectName", Schema.builder()
-                                        .type("STRING")
-                                        .description("Filter task types by exact project name.")
-                                        .build()
-                        ))
-                        .build())
-                .build();
-
-        FunctionDeclaration createTask = FunctionDeclaration.builder()
-                .name("create_task")
-                .description("Creates a new task for the user. Call this only after collecting all required information from the user.")
-                .parameters(Schema.builder()
-                        .type("OBJECT")
-                        .required(List.of("title"))
-                        .properties(Map.of(
-                                "title", Schema.builder()
-                                        .type("STRING")
-                                        .description("Title of the task.")
-                                        .build(),
-                                "description", Schema.builder()
-                                        .type("STRING")
-                                        .description("Optional description of the task.")
-                                        .build(),
-                                "status", Schema.builder()
-                                        .type("STRING")
-                                        .description("Initial stage (column) name. Available stages: " + stageList + ".")
-                                        .enum_(stageNames)
-                                        .build(),
-                                "projectName", Schema.builder()
-                                        .type("STRING")
-                                        .description("Exact name of the project to associate the task with.")
-                                        .build(),
-                                "taskTypeName", Schema.builder()
-                                        .type("STRING")
-                                        .description("Exact name of the task type to associate the task with.")
-                                        .build()
-                        ))
-                        .build())
-                .build();
-
-        return Tool.builder()
-                .functionDeclarations(List.of(getTasks, getProjects, getTaskTypes, createTask))
-                .build();
-    }
-
-    private String translateStatus(String status, String language) {
-        // status now holds the stage (column) name directly, already human-readable.
-        return status != null ? status : "?";
-    }
-
-    private Map<String, Object> executeTool(String functionName, Map<String, Object> args, Integer userId, Integer workspaceId, String language) {
-        String noProject = messageService.get("ai.no_project");
-        String noType = messageService.get("ai.no_type");
-
-        return switch (functionName) {
-            case "get_tasks" -> {
-                List<Task> tasks = taskRepository.findByWorkspaceIdOrdered(workspaceId);
-                Map<Integer, String> projectNames = projectRepository.findByWorkspaceIdOrderByNameAsc(workspaceId)
-                        .stream().collect(Collectors.toMap(Project::getId, Project::getName));
-                Map<Integer, String> taskTypeNames = taskTypeRepository.findByProject_WorkspaceId(workspaceId)
-                        .stream().collect(Collectors.toMap(TaskType::getId, TaskType::getName));
-
-                String date = args.get("date") != null ? args.get("date").toString() : null;
-                String startDate = args.get("startDate") != null ? args.get("startDate").toString() : null;
-                String endDate = args.get("endDate") != null ? args.get("endDate").toString() : null;
-                String statusFilter = args.get("status") != null ? args.get("status").toString() : null;
-                String projectFilter = args.get("project") != null ? args.get("project").toString() : null;
-
-                if (date != null) {
-                    LocalDate ld = LocalDate.parse(date);
-                    Instant dayStart = ld.atStartOfDay(ZONE_BR).toInstant();
-                    Instant dayEnd = ld.plusDays(1).atStartOfDay(ZONE_BR).toInstant();
-                    tasks = tasks.stream().filter(t ->
-                            (t.getCreatedAt().compareTo(dayStart) >= 0 && t.getCreatedAt().isBefore(dayEnd)) ||
-                            (t.getUpdatedAt().compareTo(dayStart) >= 0 && t.getUpdatedAt().isBefore(dayEnd))
-                    ).toList();
-                } else if (startDate != null && endDate != null) {
-                    Instant rangeStart = LocalDate.parse(startDate).atStartOfDay(ZONE_BR).toInstant();
-                    Instant rangeEnd = LocalDate.parse(endDate).plusDays(1).atStartOfDay(ZONE_BR).toInstant();
-                    tasks = tasks.stream().filter(t ->
-                            (t.getCreatedAt().compareTo(rangeStart) >= 0 && t.getCreatedAt().isBefore(rangeEnd)) ||
-                            (t.getUpdatedAt().compareTo(rangeStart) >= 0 && t.getUpdatedAt().isBefore(rangeEnd))
-                    ).toList();
-                }
-
-                if (statusFilter != null) {
-                    tasks = tasks.stream().filter(t -> statusFilter.equals(t.getStatus())).toList();
-                }
-
-                if (projectFilter != null) {
-                    tasks = tasks.stream().filter(t -> {
-                        String pName = t.getProjectId() != null ? projectNames.get(t.getProjectId()) : null;
-                        return pName != null && pName.toLowerCase().contains(projectFilter.toLowerCase());
-                    }).toList();
-                }
-
-                List<Map<String, Object>> taskList = tasks.stream().map(t -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("title", t.getTitle());
-                    m.put("description", t.getDescription() != null ? t.getDescription() : "");
-                    m.put("status", translateStatus(t.getStatus(), language));
-                    m.put("createdAt", t.getCreatedAt().toString());
-                    m.put("updatedAt", t.getUpdatedAt().toString());
-                    m.put("project", t.getProjectId() != null ? projectNames.getOrDefault(t.getProjectId(), noProject) : noProject);
-                    m.put("taskType", t.getTaskTypeId() != null ? taskTypeNames.getOrDefault(t.getTaskTypeId(), noType) : noType);
-                    return m;
-                }).toList();
-                yield Map.of("tasks", taskList, "count", taskList.size());
-            }
-            case "get_projects" -> {
-                List<Project> projects = projectRepository.findByWorkspaceIdOrderByNameAsc(workspaceId);
-                List<Map<String, Object>> projectList = projects.stream().map(p -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("name", p.getName());
-                    m.put("color", p.getColor());
-                    return m;
-                }).toList();
-                yield Map.of("projects", projectList);
-            }
-            case "get_task_types" -> {
-                List<TaskType> taskTypes = taskTypeRepository.findByProject_WorkspaceId(workspaceId);
-                Map<Integer, String> projectNames = projectRepository.findByWorkspaceIdOrderByNameAsc(workspaceId)
-                        .stream().collect(Collectors.toMap(Project::getId, Project::getName));
-
-                String projectFilter = args.get("projectName") != null ? args.get("projectName").toString() : null;
-                if (projectFilter != null) {
-                    taskTypes = taskTypes.stream()
-                            .filter(tt -> projectNames.getOrDefault(tt.getProjectId(), "")
-                                    .equalsIgnoreCase(projectFilter))
-                            .toList();
-                }
-
-                List<Map<String, Object>> typeList = taskTypes.stream().map(tt -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("name", tt.getName());
-                    m.put("project", projectNames.getOrDefault(tt.getProjectId(), noProject));
-                    return m;
-                }).toList();
-                yield Map.of("taskTypes", typeList);
-            }
-            case "create_task" -> {
-                String title = args.get("title") != null ? args.get("title").toString() : null;
-                if (title == null || title.isBlank()) {
-                    yield Map.of("error", "title is required");
-                }
-
-                String description = args.get("description") != null ? args.get("description").toString() : null;
-                String stageName = args.get("status") != null ? args.get("status").toString() : null;
-                String projectName = args.get("projectName") != null ? args.get("projectName").toString() : null;
-                String taskTypeName = args.get("taskTypeName") != null ? args.get("taskTypeName").toString() : null;
-
-                User user = userRepository.findById(userId)
-                        .orElseThrow(() -> new RuntimeException("User not found"));
-
-                var workspace = workspaceRepository.findById(workspaceId)
-                        .orElseThrow(() -> new RuntimeException("Workspace not found"));
-
-                List<Stage> stages = stageRepository.findByWorkspaceIdOrderByPositionAsc(workspaceId);
-                if (stages.isEmpty()) {
-                    yield Map.of("error", messageService.get("error.stage.not_found"));
-                }
-                Stage stage = stageName != null
-                        ? stages.stream().filter(s -> s.getName().equalsIgnoreCase(stageName)).findFirst().orElse(stages.get(0))
-                        : stages.get(0);
-
-                Task task = Task.builder()
-                        .title(title)
-                        .description(description)
-                        .status(stage.getName())
-                        .stage(stage)
-                        .priority("MEDIUM")
-                        .user(user)
-                        .workspace(workspace)
-                        .build();
-
-                boolean projectNotFound = false;
-                if (projectName != null) {
-                    Optional<Project> matchedProject = projectRepository.findByWorkspaceIdOrderByNameAsc(workspaceId).stream()
-                            .filter(p -> p.getName().equalsIgnoreCase(projectName))
-                            .findFirst();
-                    if (matchedProject.isPresent()) {
-                        task.setProject(matchedProject.get());
-                    } else {
-                        projectNotFound = true;
-                    }
-                }
-
-                boolean typeNotFound = false;
-                if (taskTypeName != null) {
-                    Optional<TaskType> matchedType = taskTypeRepository.findByProject_WorkspaceId(workspaceId).stream()
-                            .filter(tt -> tt.getName().equalsIgnoreCase(taskTypeName))
-                            .findFirst();
-                    if (matchedType.isPresent()) {
-                        task.setTaskType(matchedType.get());
-                    } else {
-                        typeNotFound = true;
-                    }
-                }
-
-                Task saved = taskRepository.save(task);
-                Map<String, Object> result = new LinkedHashMap<>();
-                result.put("success", true);
-                result.put("title", saved.getTitle());
-                result.put("status", translateStatus(saved.getStatus(), language));
-                if (projectNotFound) result.put("projectNotFound", true);
-                if (typeNotFound) result.put("typeNotFound", true);
-                yield result;
-            }
-            default -> Map.of("error", messageService.get("error.gemini.unknown_tool", functionName));
-        };
     }
 }

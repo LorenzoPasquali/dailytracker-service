@@ -51,6 +51,24 @@ spring:
     validate-on-migrate: false
     locations: classpath:db/migration
 
+  ai:
+    mcp:
+      server:
+        enabled: true
+        type: SYNC
+        name: dailytracker-mcp
+        version: 0.0.1
+        # SSE transport endpoints kept under /mcp so SecurityConfig can guard /mcp/**.
+        # Fase 1: endpoint blocked externally (denyAll); internal Gemini bridges to the
+        # tool callbacks in-process. Fase 2 swaps the guard for per-user MCP token auth.
+        sse-endpoint: /mcp/sse
+        sse-message-endpoint: /mcp/message
+        # Periodic SSE pings keep the connection alive across idle gaps (e.g. while the
+        # user composes a prompt). Without this the stream dies after minutes idle and
+        # later tool responses never reach the client → "Request timed out" in Claude.
+        keep-alive-interval: 20s
+        request-timeout: 60s
+
 app:
   jwt:
     secret: ${JWT_SECRET}
