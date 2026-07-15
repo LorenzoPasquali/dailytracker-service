@@ -1,5 +1,8 @@
 server:
   port: ${PORT:3000}
+  # Honor X-Forwarded-* from the reverse proxy so OAuth metadata (issuer, endpoint URLs)
+  # is advertised with the public https host, not the internal http:host:port.
+  forward-headers-strategy: framework
 
 spring:
   config:
@@ -58,15 +61,15 @@ spring:
         type: SYNC
         name: dailytracker-mcp
         version: 0.0.1
-        # SSE transport endpoints kept under /mcp so SecurityConfig can guard /mcp/**.
-        # Fase 1: endpoint blocked externally (denyAll); internal Gemini bridges to the
-        # tool callbacks in-process. Fase 2 swaps the guard for per-user MCP token auth.
-        sse-endpoint: /mcp/sse
-        sse-message-endpoint: /mcp/message
-        # Periodic SSE pings keep the connection alive across idle gaps (e.g. while the
-        # user composes a prompt). Without this the stream dies after minutes idle and
-        # later tool responses never reach the client → "Request timed out" in Claude.
-        keep-alive-interval: 20s
+        # Streamable HTTP (MCP 2025 transport) at /mcp — what native "add custom connector"
+        # flows speak. mcp-remote (legacy dt_mcp fallback) also handles this URL.
+        # All under /mcp so SecurityConfig/McpAuthFilter guard /mcp/**.
+        protocol: STREAMABLE
+        streamable-http:
+          mcp-endpoint: /mcp
+          # Periodic pings keep the stream alive across idle gaps (else it dies after
+          # minutes idle and later tool responses never reach the client).
+          keep-alive-interval: 20s
         request-timeout: 60s
 
 app:
@@ -76,6 +79,13 @@ app:
     refresh-expiration: 2592000000 # 30 days
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   aes-secret: ${AES_SECRET}
+  # Public base URL of this API — used as the OAuth 2.1 issuer. Must be the exact
+  # https origin clients reach (metadata/issuer validation is strict).
+  public-url: ${APP_PUBLIC_URL:http://localhost:3000}
+  oauth:
+    # RSA signing key (JWK JSON) for OAuth access tokens. Must be stable across restarts,
+    # else every issued token/refresh breaks. Blank = generate ephemeral (dev only, warns).
+    jwk: ${MCP_OAUTH_JWK:}
   notifications:
     from-email: ${NOTIFICATIONS_FROM_EMAIL:noreply@dailytracker.app}
     from-name: ${NOTIFICATIONS_FROM_NAME:DailyTracker}

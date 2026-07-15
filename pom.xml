@@ -85,10 +85,21 @@
             <version>1.41.0</version>
         </dependency>
 
-        <!-- Spring AI MCP Server (SSE over Spring MVC) -->
+        <!-- Spring AI MCP Server (Streamable HTTP over Spring MVC) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+        </dependency>
+
+        <!-- OAuth 2.1 Authorization Server (MCP native connector auth) -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-authorization-server</artifactId>
+        </dependency>
+        <!-- Validates the JWT access tokens it issues on /mcp -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
 
         <!-- Flyway -->
