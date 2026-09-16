@@ -1,16 +1,20 @@
 package com.dailytracker.api.security;
 
+import com.dailytracker.api.analytics.ClientIp;
+import com.dailytracker.api.analytics.capture.AnalyticsEvents;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 
 @Component
@@ -18,6 +22,7 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final ApplicationEventPublisher events;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -38,6 +43,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             UsernamePasswordAuthenticationToken authToken =
                     new UsernamePasswordAuthenticationToken(userId, null, List.of());
             SecurityContextHolder.getContext().setAuthentication(authToken);
+            events.publishEvent(new AnalyticsEvents.UserActivity(userId, ClientIp.of(request), Instant.now()));
         }
 
         filterChain.doFilter(request, response);

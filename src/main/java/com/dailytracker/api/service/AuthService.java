@@ -1,5 +1,6 @@
 package com.dailytracker.api.service;
 
+import com.dailytracker.api.analytics.capture.AnalyticsEvents;
 import com.dailytracker.api.dto.request.LoginRequest;
 import com.dailytracker.api.dto.request.RegisterRequest;
 import com.dailytracker.api.dto.response.AuthResponse;
@@ -13,6 +14,7 @@ import com.dailytracker.api.repository.UserRepository;
 import com.dailytracker.api.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,12 +32,13 @@ public class AuthService {
     private final JwtService jwtService;
     private final MessageService messageService;
     private final WorkspaceService workspaceService;
+    private final ApplicationEventPublisher events;
 
     @Value("${app.jwt.refresh-expiration}")
     private long refreshExpiration;
 
     @Transactional
-    public Integer register(RegisterRequest request) {
+    public Integer register(RegisterRequest request, String clientIp) {
         if (userRepository.existsByEmail(request.email())) {
             throw new BadRequestException(messageService.get("error.email.exists"));
         }
@@ -49,11 +52,13 @@ public class AuthService {
 
         user = userRepository.save(user);
         workspaceService.createPersonalWorkspace(user);
+        events.publishEvent(new AnalyticsEvents.UserAuthenticated(user.getId(), AnalyticsEvents.Kind.SIGNUP,
+                AnalyticsEvents.Method.EMAIL, clientIp, Instant.now()));
         return user.getId();
     }
 
     @Transactional
-    public AuthResponse login(LoginRequest request) {
+    public AuthResponse login(LoginRequest request, String clientIp) {
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new BadRequestException("Credenciais inválidas."));
 
@@ -64,6 +69,8 @@ public class AuthService {
 
         String token = jwtService.generateToken(user.getId());
         RefreshToken refreshToken = createRefreshToken(user);
+        events.publishEvent(new AnalyticsEvents.UserAuthenticated(user.getId(), AnalyticsEvents.Kind.LOGIN,
+                AnalyticsEvents.Method.EMAIL, clientIp, Instant.now()));
 
         return new AuthResponse(token, refreshToken.getToken());
     }

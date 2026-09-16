@@ -83,6 +83,11 @@ O servidor sobe na porta 3000 por padrão.
 | GOOGLE_CLIENT_ID | Client ID do Google OAuth2 |
 | GOOGLE_CLIENT_SECRET | Client Secret do Google OAuth2 |
 | PORT | Porta do servidor (padrão: 3000) |
+| ADMIN_PASSWORD | Senha do painel interno `/analytics` (ver `docs/ADMIN_ANALYTICS.md`) |
+| ADMIN_TOKEN_SECRET | Segredo HMAC das sessões do painel interno |
+| ANALYTICS_HASH_SALT | Salt do hash anônimo de visitantes |
+| MAXMIND_ACCOUNT_ID / MAXMIND_LICENSE_KEY | Credenciais GeoLite2 para país por IP (opcional) |
+| GEOIP_DB_PATH | Caminho do GeoLite2-Country.mmdb (padrão `./data/GeoLite2-Country.mmdb`) |
 
 ## Deploy
 

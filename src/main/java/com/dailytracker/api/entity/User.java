@@ -3,6 +3,7 @@ package com.dailytracker.api.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Instant;
 import java.util.List;
 
 @Entity
@@ -40,6 +41,20 @@ public class User {
     @Column(name = "\"onboardingCompleted\"", nullable = false)
     @Builder.Default
     private Boolean onboardingCompleted = false;
+
+    @Column(name = "\"createdAt\"", nullable = false)
+    private Instant createdAt;
+
+    /** ISO 3166-1 alpha-2 country resolved from the IP at signup; null when unknown. */
+    @Column(name = "\"signupCountry\"", length = 2)
+    private String signupCountry;
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 
     @OneToMany(mappedBy = "user")
     private List<Task> tasks;
