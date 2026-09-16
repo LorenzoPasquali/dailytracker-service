@@ -4,6 +4,7 @@ import com.dailytracker.api.dto.request.LoginRequest;
 import com.dailytracker.api.dto.request.RegisterRequest;
 import com.dailytracker.api.dto.request.TokenRefreshRequest;
 import com.dailytracker.api.dto.response.AuthResponse;
+import com.dailytracker.api.analytics.ClientIp;
 import com.dailytracker.api.service.AuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,15 +36,16 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody RegisterRequest request) {
-        Integer userId = authService.register(request);
+    public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody RegisterRequest request,
+                                                        HttpServletRequest http) {
+        Integer userId = authService.register(request, ClientIp.of(http));
         return ResponseEntity.status(201)
                 .body(Map.of("message", "Usuário criado com sucesso!", "userId", userId));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
+        return ResponseEntity.ok(authService.login(request, ClientIp.of(http)));
     }
 
     @PostMapping("/refresh")

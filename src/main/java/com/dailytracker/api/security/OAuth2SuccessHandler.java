@@ -1,5 +1,7 @@
 package com.dailytracker.api.security;
 
+import com.dailytracker.api.analytics.ClientIp;
+import com.dailytracker.api.analytics.capture.AnalyticsEvents;
 import com.dailytracker.api.entity.RefreshToken;
 import com.dailytracker.api.entity.User;
 import com.dailytracker.api.repository.UserRepository;
@@ -10,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
@@ -20,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.time.Instant;
 
 @Component
 @RequiredArgsConstructor
@@ -30,6 +34,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     private final AuthService authService;
     private final WorkspaceService workspaceService;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher events;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
@@ -47,6 +52,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
                 ? oAuth2User.getAttribute("given_name")
                 : (email != null ? email.split("@")[0] : "User");
 
+        boolean[] created = {false};
         User user = userRepository.findByGoogleId(googleId)
                 .orElseGet(() -> {
                     // Se nao encontrar pelo Google ID, tenta encontrar pelo Email (para vincular contas)
@@ -64,12 +70,16 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
                                                 .build()
                                 );
                                 workspaceService.createPersonalWorkspace(newUser);
+                                created[0] = true;
                                 return newUser;
                             });
                 });
 
         String token = jwtService.generateToken(user.getId());
         RefreshToken refreshToken = authService.createRefreshToken(user);
+        events.publishEvent(new AnalyticsEvents.UserAuthenticated(user.getId(),
+                created[0] ? AnalyticsEvents.Kind.SIGNUP : AnalyticsEvents.Kind.LOGIN,
+                AnalyticsEvents.Method.GOOGLE, ClientIp.of(request), Instant.now()));
 
         Boolean isPopup = (Boolean) request.getSession().getAttribute("oauth_popup");
         request.getSession().removeAttribute("oauth_popup");

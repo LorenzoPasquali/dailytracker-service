@@ -86,6 +86,20 @@ app:
     # RSA signing key (JWK JSON) for OAuth access tokens. Must be stable across restarts,
     # else every issued token/refresh breaks. Blank = generate ephemeral (dev only, warns).
     jwk: ${MCP_OAUTH_JWK:}
+  admin:
+    # Single shared password for the hidden /analytics dashboard. Blank = dashboard disabled.
+    password: ${ADMIN_PASSWORD:}
+    # HMAC secret for admin session tokens. Blank = random per boot (sessions die on restart).
+    token-secret: ${ADMIN_TOKEN_SECRET:}
+    token-ttl-minutes: ${ADMIN_TOKEN_TTL_MINUTES:120}
+  analytics:
+    # Salt for the daily anonymous visitor hash. Blank = random per boot.
+    hash-salt: ${ANALYTICS_HASH_SALT:}
+    geoip:
+      # Local GeoLite2-Country.mmdb. Downloaded at boot (and weekly) when MaxMind creds are set.
+      db-path: ${GEOIP_DB_PATH:./data/GeoLite2-Country.mmdb}
+      maxmind-account-id: ${MAXMIND_ACCOUNT_ID:}
+      maxmind-license-key: ${MAXMIND_LICENSE_KEY:}
   notifications:
     from-email: ${NOTIFICATIONS_FROM_EMAIL:noreply@dailytracker.app}
     from-name: ${NOTIFICATIONS_FROM_NAME:DailyTracker}
