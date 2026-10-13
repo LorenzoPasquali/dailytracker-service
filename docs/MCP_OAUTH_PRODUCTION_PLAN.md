@@ -129,7 +129,7 @@ Claude (claude.ai)                        This API (https://api.<domain>)       
    `approvedScopes` (subset of {mcp:read, mcp:write}). Validate userId from JWT; validate
    `client_id` exists and `redirect_uri` is registered for it (defense). Mint a **one-time ticket**
    (opaque random) → in-memory map `{ticket → (userId, approvedScopes, expiresAt=now+60s)}`
-   (single-instance SSH deploy → in-memory OK; restart drops pending tickets, 60 s TTL, low risk).
+   (single-instance VPS deploy → in-memory OK; restart drops pending tickets, 60 s TTL, low risk).
    Return `{ resumeUrl: "${app.public-url}/oauth2/authorize?<original params, scope REPLACED by
    approvedScopes>&_ticket=<ticket>" }`.
 3. **Ticket filter** in the SAS chain, before `OAuth2AuthorizationEndpointFilter`: on
@@ -197,7 +197,7 @@ client-id field, so it registers dynamically)
 
 - **`MCP_OAUTH_JWK`** — REQUIRED in prod. Blank ⇒ ephemeral RSA key regenerated every restart ⇒
   all issued access/refresh tokens break on each deploy. Generate a stable 2048-bit RSA JWK JSON,
-  store in the server `.env` (SSH deploy imports `optional:file:.env`). Simplest generation: boot
+  store in the server `.env` (the VPS deploy imports `optional:file:.env`). Simplest generation: boot
   once, copy the JWK from the WARN log in `AuthorizationServerConfig.rsaKey(...)`, paste into
   `.env`. **Security: this JWK contains the private key — `.env` only, never commit, never log in
   prod once set.**

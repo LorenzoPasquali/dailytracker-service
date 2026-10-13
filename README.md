@@ -91,7 +91,7 @@ O servidor sobe na porta 3000 por padrão.
 
 ## Deploy
 
-O projeto inclui um Dockerfile multi-stage. No Render, basta criar um Web Service apontando para o repositório com runtime Docker. O health check path é `/healthz`.
+O projeto inclui um Dockerfile multi-stage. O CI (`.github/workflows/docker-build.yml`) só builda e publica `ghcr.io/lorenzopasquali/dailytracker-service:latest` a cada push na `master`. O deploy é feito pela VPS, que puxa o `:latest` a cada 2 min (timer `dailytracker-autodeploy`). O health check path é `/healthz`.
 
 ## Banco de dados
 
